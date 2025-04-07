@@ -51,7 +51,7 @@ def index():
     """
     Render the main page with a form to input the domain.
     """
-    return render_template('index.html')
+    return render_template('index.html')  # Ensure index.html is in the templates folder
 
 @app.route('/start', methods=['POST'])
 def start_archiving():
@@ -88,4 +88,6 @@ def get_status():
         return jsonify(archiver_status)
 
 if __name__ == '__main__':
+    # Automatically start the Flask server
+    print("Starting Wayback Archiver web interface...")
     app.run(debug=True)

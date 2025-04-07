@@ -37,7 +37,8 @@
                 }
             })
             .catch(error => {
-                alert(`Error starting archiving: ${error.message}`);
+                console.error('Error starting archiving:', error);
+                alert(`Error starting archiving: ${error.message || 'Failed to fetch'}`);
             });
         }
 
