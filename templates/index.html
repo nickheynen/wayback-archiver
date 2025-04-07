@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wayback Archiver</title>
+    <script>
+        function startArchiving() {
+            const subdomain = document.getElementById('subdomain').value;
+            const email = document.getElementById('email').value;
+            const delay = document.getElementById('delay').value;
+            const maxPages = document.getElementById('max_pages').value;
+            const excludePatterns = document.getElementById('exclude_patterns').value;
+
+            fetch('/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `subdomain=${encodeURIComponent(subdomain)}&email=${encodeURIComponent(email)}&delay=${delay}&max_pages=${maxPages}&exclude_patterns=${encodeURIComponent(excludePatterns)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                if (data.status === 'success') {
+                    setInterval(updateStatus, 5000);
+                }
+            });
+        }
+
+        function updateStatus() {
+            fetch('/status')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status').innerText = data.message;
+                if (data.total > 0) {
+                    document.getElementById('progress').innerText = `Progress: ${data.progress}/${data.total}`;
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+    <h1>Wayback Archiver</h1>
+    <form onsubmit="event.preventDefault(); startArchiving();">
+        <label for="subdomain">Subdomain:</label>
+        <input type="text" id="subdomain" name="subdomain" required><br><br>
+        <label for="email">Email (optional):</label>
+        <input type="email" id="email" name="email"><br><br>
+        <label for="delay">Delay (seconds):</label>
+        <input type="number" id="delay" name="delay" value="30"><br><br>
+        <label for="max_pages">Max Pages (optional):</label>
+        <input type="number" id="max_pages" name="max_pages"><br><br>
+        <label for="exclude_patterns">Exclude Patterns (comma-separated):</label>
+        <input type="text" id="exclude_patterns" name="exclude_patterns" value="/tag/,/category/"><br><br>
+        <button type="submit">Start Archiving</button>
+    </form>
+    <h2>Status</h2>
+    <p id="status">Idle</p>
+    <p id="progress"></p>
+</body>
+</html>

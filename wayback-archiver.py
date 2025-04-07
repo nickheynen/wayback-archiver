@@ -5,22 +5,23 @@ from urllib.parse import urlparse, urljoin
 import argparse
 import json
 from datetime import datetime
+import logging
 
 class WaybackArchiver:
     def __init__(self, subdomain, email=None, delay=30, exclude_patterns=None, 
                 max_retries=3, backoff_factor=2.0, batch_size=100, batch_pause=300):
         """
-        Initialize the archiver with the target subdomain
-        
+        Initialize the WaybackArchiver instance with the target subdomain and configuration options.
+
         Args:
-            subdomain: The full subdomain URL (e.g., 'https://blog.example.com')
-            email: Optional email for the Wayback Machine API (recommended but not required)
-            delay: Delay between API requests in seconds (default 30s for API politeness)
-            exclude_patterns: List of URL patterns to exclude (e.g., ['/tag/', '/category/'])
-            max_retries: Maximum number of retry attempts for failed archives
-            backoff_factor: Exponential backoff factor for retries
-            batch_size: Number of URLs to process before taking a longer pause
-            batch_pause: Seconds to pause between batches
+            subdomain (str): The full subdomain URL to archive (e.g., 'https://blog.example.com').
+            email (str, optional): Email address for the Wayback Machine API. Recommended for high-volume archiving.
+            delay (int, optional): Delay in seconds between API requests to avoid rate-limiting (default: 30 seconds).
+            exclude_patterns (list, optional): List of URL patterns to exclude from crawling (e.g., ['/tag/', '/category/']).
+            max_retries (int, optional): Maximum number of retry attempts for failed archive requests (default: 3).
+            backoff_factor (float, optional): Exponential backoff factor for retries (default: 2.0).
+            batch_size (int, optional): Number of URLs to process before taking a longer pause (default: 100).
+            batch_pause (int, optional): Duration in seconds to pause between batches (default: 300 seconds).
         """
         self.subdomain = subdomain
         self.base_domain = urlparse(subdomain).netloc
@@ -33,21 +34,35 @@ class WaybackArchiver:
         self.batch_pause = batch_pause
         self.visited_urls = set()
         self.urls_to_archive = set()
+        self.successful_urls = set()
+        logging.basicConfig(
+            filename='wayback_archiver.log',
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+        logging.info("WaybackArchiver initialized.")
         
     def crawl(self, max_pages=None):
         """
-        Crawl the subdomain to find all URLs
-        
+        Crawl the subdomain to discover all URLs within the same domain.
+
         Args:
-            max_pages: Maximum number of pages to crawl (None for unlimited)
+            max_pages (int, optional): Maximum number of pages to crawl. If None, crawl all pages (default: None).
         """
         print(f"Starting to crawl {self.subdomain}")
-        self._crawl_page(self.subdomain, max_pages)
+        try:
+            self._crawl_page(self.subdomain, max_pages)
+        except Exception as e:
+            logging.error(f"Error during crawling: {str(e)}")
         print(f"Crawling completed. Found {len(self.urls_to_archive)} URLs to archive.")
         
     def _crawl_page(self, url, max_pages=None):
         """
-        Recursively crawl a page and extract all links within the same subdomain
+        Recursively crawl a single page to extract all links within the same subdomain.
+
+        Args:
+            url (str): The URL of the page to crawl.
+            max_pages (int, optional): Maximum number of pages to crawl. If None, crawl all pages (default: None).
         """
         if url in self.visited_urls:
             return
@@ -94,8 +109,9 @@ class WaybackArchiver:
     
     def archive_urls(self):
         """
-        Submit all found URLs to the Wayback Machine
-        With batching for API politeness
+        Submit all discovered URLs to the Wayback Machine for archiving.
+
+        This method processes URLs in batches to ensure API politeness and handles retries for failed requests.
         """
         if not self.urls_to_archive:
             print("No URLs to archive. Run crawl() first.")
@@ -119,8 +135,11 @@ class WaybackArchiver:
             try:
                 success = self._archive_url(url, max_retries=self.max_retries, backoff_factor=self.backoff_factor)
                 if success:
+                    self.successful_urls.add(url)
+                    logging.info(f"Archived successfully: {url}")
                     print(f"[{i+1}/{len(self.urls_to_archive)}] Archived: {url}")
                 else:
+                    logging.warning(f"Failed to archive after retries: {url}")
                     print(f"[{i+1}/{len(self.urls_to_archive)}] Failed after retries: {url}")
                     failed_urls.append(url)
                 
@@ -129,8 +148,12 @@ class WaybackArchiver:
                     time.sleep(self.delay)
                     
             except Exception as e:
+                logging.error(f"Error archiving {url}: {str(e)}")
                 print(f"Error archiving {url}: {str(e)}")
                 failed_urls.append(url)
+        
+        # Save successfully archived URLs
+        self._save_successful_urls()
         
         # Report on failed URLs
         if failed_urls:
@@ -152,19 +175,36 @@ class WaybackArchiver:
             except Exception as e:
                 print(f"Error saving failed URLs to file: {str(e)}")
     
+    def _save_successful_urls(self):
+        """
+        Save the list of successfully archived URLs to a JSON file.
+
+        The file is named using the base domain and a timestamp for easy identification.
+        """
+        if not self.successful_urls:
+            return
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        domain_name = self.base_domain.replace(".", "_")
+        filename = f"successful_urls_{domain_name}_{timestamp}.json"
+        try:
+            with open(filename, 'w') as f:
+                json.dump(list(self.successful_urls), f, indent=2)
+            logging.info(f"Successfully archived URLs saved to {filename}.")
+        except Exception as e:
+            logging.error(f"Error saving successful URLs to file: {str(e)}")
+    
     def _archive_url(self, url, max_retries=3, retry_delay=None, backoff_factor=2):
         """
-        Submit a single URL to the Wayback Machine's Save Page Now service
-        With retry logic for temporary failures
-        
+        Submit a single URL to the Wayback Machine's Save Page Now service with retry logic.
+
         Args:
-            url: The URL to archive
-            max_retries: Maximum number of retry attempts (default: 3)
-            retry_delay: Delay between retries in seconds (default: self.delay)
-            backoff_factor: Multiplier for delay after each retry (exponential backoff)
-            
+            url (str): The URL to archive.
+            max_retries (int, optional): Maximum number of retry attempts for failed requests (default: 3).
+            retry_delay (int, optional): Delay in seconds between retries. Defaults to the instance's delay setting.
+            backoff_factor (float, optional): Multiplier for exponential backoff between retries (default: 2.0).
+
         Returns:
-            bool: True if archiving was successful, False otherwise
+            bool: True if the URL was archived successfully, False otherwise.
         """
         if retry_delay is None:
             retry_delay = self.delay
@@ -195,6 +235,7 @@ class WaybackArchiver:
                 response = requests.post(api_url, params=params, headers=headers, timeout=30)
                 
                 if response.status_code in [200, 201]:
+                    logging.info(f"URL archived successfully: {url}")
                     return True
                 
                 # Handle specific error cases
@@ -211,15 +252,18 @@ class WaybackArchiver:
                     print(f"API returned status code {response.status_code}. Waiting {wait_time}s before retry {retries+1}/{max_retries}...")
                     time.sleep(wait_time)
                     
-            except requests.exceptions.ConnectionError:
+            except requests.exceptions.ConnectionError as e:
+                logging.warning(f"Connection error for {url}: {str(e)}")
                 wait_time = retry_delay * (backoff_factor ** retries)
                 print(f"Connection error. Waiting {wait_time}s before retry {retries+1}/{max_retries}...")
                 time.sleep(wait_time)
-            except requests.exceptions.Timeout:
+            except requests.exceptions.Timeout as e:
+                logging.warning(f"Timeout for {url}: {str(e)}")
                 wait_time = retry_delay * (backoff_factor ** retries)
                 print(f"Request timeout. Waiting {wait_time}s before retry {retries+1}/{max_retries}...")
                 time.sleep(wait_time)
             except Exception as e:
+                logging.error(f"Unexpected error for {url}: {str(e)}")
                 wait_time = retry_delay * (backoff_factor ** retries)
                 print(f"Error during archiving: {str(e)}. Waiting {wait_time}s before retry {retries+1}/{max_retries}...")
                 time.sleep(wait_time)
@@ -229,6 +273,11 @@ class WaybackArchiver:
         return False  # Failed after all retries
 
 def main():
+    """
+    Parse command-line arguments and execute the WaybackArchiver process.
+
+    This function supports both normal crawling and retrying previously failed URLs.
+    """
     parser = argparse.ArgumentParser(description='Archive an entire subdomain using the Wayback Machine')
     parser.add_argument('subdomain', help='The subdomain to archive (e.g., https://blog.example.com)')
     parser.add_argument('--email', help='Your email address (recommended for API use and necessary for high volume archiving)')
@@ -274,6 +323,7 @@ def main():
                 else:
                     print(f"No URLs found to retry in {args.retry_file}")
             except Exception as e:
+                logging.error(f"Error loading retry file: {str(e)}")
                 print(f"Error loading retry file: {str(e)}")
                 return
         else:
@@ -282,9 +332,12 @@ def main():
             archiver.archive_urls()
             
         print("Archiving process completed successfully!")
+        logging.info("Archiving process completed successfully!")
     except KeyboardInterrupt:
         print("\nProcess interrupted by user. Exiting...")
+        logging.warning("Process interrupted by user.")
     except Exception as e:
+        logging.error(f"An error occurred: {str(e)}")
         print(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
