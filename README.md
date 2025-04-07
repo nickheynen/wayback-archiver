@@ -26,6 +26,7 @@ Wayback Archiver helps preserve web content by crawling all pages within a speci
 - Required packages:
   - `requests`
   - `beautifulsoup4`
+  - `flask`
 
 ## Installation
 
@@ -35,6 +36,20 @@ Wayback Archiver helps preserve web content by crawling all pages within a speci
 ```bash
 pip install -r requirements.txt
 ```
+
+## Running the Web Interface
+
+To use the web interface:
+
+1. Start the Flask server:
+
+   ```bash
+   python web_interface.py
+   ```
+
+2. Open your browser and navigate to `http://127.0.0.1:5000`.
+
+3. Fill out the form and start the archiving process.
 
 ## Usage
 

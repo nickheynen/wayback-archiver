@@ -5,12 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wayback Archiver</title>
     <script>
+        let statusInterval;
+
         function startArchiving() {
             const subdomain = document.getElementById('subdomain').value;
             const email = document.getElementById('email').value;
-            const delay = document.getElementById('delay').value;
-            const maxPages = document.getElementById('max_pages').value;
+            const delay = parseInt(document.getElementById('delay').value, 10);
+            const maxPages = parseInt(document.getElementById('max_pages').value, 10) || null;
             const excludePatterns = document.getElementById('exclude_patterns').value;
+
+            if (isNaN(delay) || delay <= 0) {
+                alert("Please enter a valid delay (greater than 0).");
+                return;
+            }
+
+            if (maxPages !== null && (isNaN(maxPages) || maxPages <= 0)) {
+                alert("Please enter a valid number for max pages (greater than 0).");
+                return;
+            }
 
             fetch('/start', {
                 method: 'POST',
@@ -21,8 +33,11 @@
             .then(data => {
                 alert(data.message);
                 if (data.status === 'success') {
-                    setInterval(updateStatus, 5000);
+                    statusInterval = setInterval(updateStatus, 5000);
                 }
+            })
+            .catch(error => {
+                alert(`Error starting archiving: ${error.message}`);
             });
         }
 
@@ -34,6 +49,12 @@
                 if (data.total > 0) {
                     document.getElementById('progress').innerText = `Progress: ${data.progress}/${data.total}`;
                 }
+                if (!data.running) {
+                    clearInterval(statusInterval);
+                }
+            })
+            .catch(error => {
+                console.error(`Error fetching status: ${error.message}`);
             });
         }
     </script>
@@ -46,7 +67,7 @@
         <label for="email">Email (optional):</label>
         <input type="email" id="email" name="email"><br><br>
         <label for="delay">Delay (seconds):</label>
-        <input type="number" id="delay" name="delay" value="30"><br><br>
+        <input type="number" id="delay" name="delay" value="30" required><br><br>
         <label for="max_pages">Max Pages (optional):</label>
         <input type="number" id="max_pages" name="max_pages"><br><br>
         <label for="exclude_patterns">Exclude Patterns (comma-separated):</label>
