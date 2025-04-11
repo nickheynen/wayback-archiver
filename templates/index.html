@@ -24,12 +24,24 @@
                 return;
             }
 
+            // Create form data for better handling on server
+            const formData = new FormData();
+            formData.append('subdomain', subdomain);
+            formData.append('email', email);
+            formData.append('delay', delay);
+            formData.append('max_pages', maxPages || '');
+            formData.append('exclude_patterns', excludePatterns);
+
             fetch('/start', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `subdomain=${encodeURIComponent(subdomain)}&email=${encodeURIComponent(email)}&delay=${delay}&max_pages=${maxPages}&exclude_patterns=${encodeURIComponent(excludePatterns)}`
+                body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 alert(data.message);
                 if (data.status === 'success') {
@@ -44,7 +56,12 @@
 
         function updateStatus() {
             fetch('/status')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 document.getElementById('status').innerText = data.message;
                 if (data.total > 0) {
@@ -56,6 +73,8 @@
             })
             .catch(error => {
                 console.error(`Error fetching status: ${error.message}`);
+                // Stop polling if we get errors
+                clearInterval(statusInterval);
             });
         }
     </script>
