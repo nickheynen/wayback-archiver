@@ -6,6 +6,8 @@ import argparse
 import json
 from datetime import datetime
 import logging
+import os
+import configparser
 from urllib.robotparser import RobotFileParser
 
 class WaybackArchiver:
@@ -391,10 +393,51 @@ def main():
     parser.add_argument('--retry-file', help='JSON file containing previously failed URLs to retry')
     parser.add_argument('--ignore-robots-txt', action='store_true', help='Ignore robots.txt directives (not recommended)')
     parser.add_argument('--include-http', action='store_true', help='Include HTTP URLs in addition to HTTPS (not recommended)')
-    parser.add_argument('--s3-access-key', help='Internet Archive S3 access key for authentication')
-    parser.add_argument('--s3-secret-key', help='Internet Archive S3 secret key for authentication')
+    parser.add_argument('--s3-access-key', help='Internet Archive S3 access key for authentication (not recommended, use --use-env-keys or --config-file instead)')
+    parser.add_argument('--s3-secret-key', help='Internet Archive S3 secret key for authentication (not recommended, use --use-env-keys or --config-file instead)')
+    parser.add_argument('--use-env-keys', action='store_true', help='Use S3 credentials from IA_S3_ACCESS_KEY and IA_S3_SECRET_KEY environment variables')
+    parser.add_argument('--config-file', help='Path to configuration file containing S3 credentials')
     
     args = parser.parse_args()
+    
+    # Handle S3 credentials from different sources
+    s3_access_key = None
+    s3_secret_key = None
+    
+    # Option 1: Direct command line arguments (least secure)
+    if args.s3_access_key and args.s3_secret_key:
+        s3_access_key = args.s3_access_key
+        s3_secret_key = args.s3_secret_key
+        logging.warning("Using S3 credentials from command line is less secure. Consider using environment variables or a config file.")
+    
+    # Option 2: Environment variables
+    elif args.use_env_keys:
+        s3_access_key = os.environ.get('IA_S3_ACCESS_KEY')
+        s3_secret_key = os.environ.get('IA_S3_SECRET_KEY')
+        if not s3_access_key or not s3_secret_key:
+            logging.error("Environment variables IA_S3_ACCESS_KEY and/or IA_S3_SECRET_KEY not found. Please set them first.")
+            print("Error: Environment variables IA_S3_ACCESS_KEY and/or IA_S3_SECRET_KEY not set.")
+            return
+        logging.info("Using S3 credentials from environment variables.")
+    
+    # Option 3: Configuration file
+    elif args.config_file:
+        if not os.path.exists(args.config_file):
+            logging.error(f"Config file not found: {args.config_file}")
+            print(f"Error: Config file not found: {args.config_file}")
+            return
+            
+        try:
+            config = configparser.ConfigParser()
+            config.read(args.config_file)
+            s3_access_key = config.get('default', 's3_access_key')
+            s3_secret_key = config.get('default', 's3_secret_key')
+            logging.info(f"Using S3 credentials from config file: {args.config_file}")
+        except (configparser.NoSectionError, configparser.NoOptionError) as e:
+            logging.error(f"Error reading config file: {str(e)}")
+            print(f"Error reading config file: {str(e)}")
+            print("Config file should have format:\n[default]\ns3_access_key = YOUR_KEY\ns3_secret_key = YOUR_SECRET")
+            return
     
     archiver = WaybackArchiver(
         args.subdomain, 
@@ -407,8 +450,8 @@ def main():
         batch_pause=args.batch_pause,
         respect_robots_txt=not args.ignore_robots_txt,
         https_only=not args.include_http,
-        s3_access_key=args.s3_access_key,
-        s3_secret_key=args.s3_secret_key
+        s3_access_key=s3_access_key,
+        s3_secret_key=s3_secret_key
     )
     
     try:

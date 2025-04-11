@@ -82,6 +82,33 @@ python3 wayback_archiver.py https://example.com --email your-email@example.com
 ```
 
 #### S3 Authentication (For Internet Archive Contributors)
+
+There are three ways to provide S3 credentials, in order of security preference:
+
+1. **Environment Variables** (Recommended):
+```bash
+# Set the variables
+export IA_S3_ACCESS_KEY="your_access_key"
+export IA_S3_SECRET_KEY="your_secret_key"
+
+# Run the tool with --use-env-keys flag
+python3 wayback_archiver.py https://example.com --use-env-keys
+```
+
+2. **Configuration File**:
+Create a config file (e.g., `~/.ia_credentials.ini`):
+```ini
+[default]
+s3_access_key = your_access_key
+s3_secret_key = your_secret_key
+```
+
+Then run:
+```bash
+python3 wayback_archiver.py https://example.com --config-file ~/.ia_credentials.ini
+```
+
+3. **Command Line** (Not recommended for security reasons):
 ```bash
 python3 wayback_archiver.py https://example.com --s3-access-key YOUR_ACCESS_KEY --s3-secret-key YOUR_SECRET_KEY
 ```
