@@ -20,10 +20,12 @@ Wayback Archiver helps preserve web content by crawling all pages within a speci
   - Control crawl depth with max pages limit
   - Set delays between requests for API politeness
   - Custom exclude patterns for site-specific requirements
+  - HTTPS-only mode (enabled by default)
 - **Batch Processing**: Handles large sites by processing URLs in batches with configurable pauses
 - **Resilient Operation**:
   - Retry mechanism with exponential backoff for failed archive attempts
   - Ability to resume archiving from previously failed URLs
+  - Robots.txt respect for ethical crawling
 - **Detailed Logging**: Comprehensive logs and output files to track progress and results
 
 ## Screenshot
@@ -66,10 +68,36 @@ Wayback Archiver helps preserve web content by crawling all pages within a speci
 
 ## Command Line Usage
 
-You can also run the archiver directly from the command line:
+You can run the archiver directly from the command line:
 
 ```bash
-python3 wayback_archiver.py https://example.com --email your-email@example.com --delay 30 --max-pages 500
+python3 wayback_archiver.py https://example.com --email your-email@example.com --delay 15 --max-pages 500
+```
+
+### Authentication Options
+
+#### Email Authentication (Recommended for Basic Use)
+```bash
+python3 wayback_archiver.py https://example.com --email your-email@example.com
+```
+
+#### S3 Authentication (For Internet Archive Contributors)
+```bash
+python3 wayback_archiver.py https://example.com --s3-access-key YOUR_ACCESS_KEY --s3-secret-key YOUR_SECRET_KEY
+```
+
+### HTTPS and Protocol Options
+
+By default, the tool only archives HTTPS URLs. To include HTTP URLs:
+```bash
+python3 wayback_archiver.py https://example.com --include-http
+```
+
+### Robots.txt Control
+
+By default, the tool respects robots.txt. To override:
+```bash
+python3 wayback_archiver.py https://example.com --ignore-robots-txt
 ```
 
 For all available options:
@@ -107,8 +135,11 @@ The web interface can be deployed online using various hosting services. Here's 
 
 This tool uses the Internet Archive's Wayback Machine API. Please use it responsibly:
 
-- Set reasonable delays between requests (the default is 30 seconds)
-- Provide your email when submitting to larger sites
+- Set reasonable delays between requests (the default is 15 seconds)
+- Provide your email or S3 authentication when archiving
+- Use S3 authentication if you're a frequent contributor (contact Internet Archive for credentials)
+- Keep HTTPS-only mode enabled when possible for better web security
+- Respect robots.txt directives (enabled by default)
 - Respect the terms of service of both the Internet Archive and target websites
 - Consider donating to the Internet Archive if you find this tool valuable
 
