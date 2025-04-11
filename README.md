@@ -1,83 +1,128 @@
 # Wayback Archiver
 
-A beginner-friendly tool to save websites to the Internet Archive's Wayback Machine.
+A Python tool to automatically crawl and archive entire subdomains in the Internet Archive's Wayback Machine.
 
-## What is This?
+## Overview
 
-The Wayback Archiver helps you save websites to the Internet Archive (archive.org) so they'll be preserved forever, even if the original site disappears. Think of it as taking snapshots of websites and storing them in a digital time capsule.
+Wayback Archiver helps preserve web content by crawling all pages within a specified subdomain and submitting them to the Internet Archive's Wayback Machine. This is particularly useful for:
 
-## Why Use This Tool?
+- Preserving content from websites that might be shut down
+- Creating complete historical snapshots of blogs or documentation sites
+- Ensuring important information remains available even if the original site changes
+- Archiving personal projects, portfolios, or academic websites
 
-- **Save websites that might disappear** - perfect for preserving blogs, news sites, or documentation
-- **Create a permanent record** of important information
-- **Help future researchers** access today's web content
+## Features
 
-## Getting Started (Step-by-Step)
+- **User-friendly Web Interface**: Easy-to-use UI for configuring and monitoring archiving jobs
+- **Recursive Crawling**: Automatically discovers and follows links within the target subdomain
+- **Smart Filtering**: Excludes common paths that would result in duplicate content (like tag pages, categories, etc.)
+- **Configurable Parameters**:
+  - Control crawl depth with max pages limit
+  - Set delays between requests for API politeness
+  - Custom exclude patterns for site-specific requirements
+- **Batch Processing**: Handles large sites by processing URLs in batches with configurable pauses
+- **Resilient Operation**:
+  - Retry mechanism with exponential backoff for failed archive attempts
+  - Ability to resume archiving from previously failed URLs
+- **Detailed Logging**: Comprehensive logs and output files to track progress and results
 
-### First-Time Setup
+## Screenshot
 
-1. **Make sure Python is installed**
-   - You need Python 3.7 or newer
-   - Not sure if you have Python? Open Terminal/Command Prompt and type: `python --version` or `python3 --version`
+![Wayback Archiver Web Interface](https://github.com/nickheynen/wayback-archiver/raw/main/screenshots/web_interface.png)
 
-2. **Install the required packages**
-   - Open Terminal/Command Prompt
-   - Navigate to the wayback-archiver folder
-   - Run this command:
+## Requirements
+
+- Python 3.7+
+- Required packages:
+  - `requests`: For HTTP operations
+  - `beautifulsoup4`: For HTML parsing
+  - `flask`: For the web interface
+
+## Installation
+
+1. Clone or download this repository:
+   ```bash
+   git clone https://github.com/nickheynen/wayback-archiver.git
+   cd wayback-archiver
    ```
-   pip install requests beautifulsoup4 flask
+
+2. Install the required packages:
+   ```bash
+   pip install -r requirements.txt
    ```
 
-### Running the Tool
+## Running the Web Interface
 
-1. **Start the web interface**
-   - Open Terminal/Command Prompt
-   - Navigate to the wayback-archiver folder
-   - Run this command:
+1. Start the application by running the `web_interface.py` script:
+   ```bash
+   python3 web_interface.py
    ```
-   python web_interface.py
+
+2. Open your browser and navigate to `http://127.0.0.1:5000`.
+
+3. Fill out the form with your target subdomain and configuration options.
+
+4. Click "Start Archiving" and monitor the progress.
+
+## Command Line Usage
+
+You can also run the archiver directly from the command line:
+
+```bash
+python3 wayback_archiver.py https://example.com --email your-email@example.com --delay 30 --max-pages 500
+```
+
+For all available options:
+```bash
+python3 wayback_archiver.py --help
+```
+
+## Online Deployment
+
+The web interface can be deployed online using various hosting services. Here's how to deploy on:
+
+### Using PythonAnywhere
+
+1. Create a free account on [PythonAnywhere](https://www.pythonanywhere.com/)
+2. Upload the project files or clone the repository
+3. Set up a web app with Flask
+4. Configure your WSGI file to point to the `web_interface.py` application
+
+### Using Heroku
+
+1. Add a `Procfile` with the content:
    ```
-   - You should see a message saying the server started
+   web: gunicorn web_interface:app
+   ```
+2. Add `gunicorn` to your requirements.txt
+3. Deploy to Heroku
 
-2. **Access the tool in your browser**
-   - Open any web browser (Chrome, Firefox, Safari, etc.)
-   - Type this address: `http://127.0.0.1:5000`
-   - You should now see the Wayback Archiver interface
+## Output Files
 
-3. **Archive a website**
-   - Enter the website address you want to archive (e.g., `https://example.com`)
-   - Optional: Enter your email address (recommended but not required)
-   - Click the "Start Archiving" button
-   - Wait for the process to complete (this may take several minutes)
+- **Log File**: `wayback_archiver.log` contains detailed logs of the archiving process.
+- **Successful URLs**: Saved to a JSON file named `successful_urls_<domain>_<timestamp>.json`.
+- **Failed URLs**: Saved to a JSON file named `failed_urls_<domain>_<timestamp>.json`.
 
-### Understanding the Results
+## API Usage Notice
 
-After archiving completes, you'll get:
+This tool uses the Internet Archive's Wayback Machine API. Please use it responsibly:
 
-- **Log file**: A detailed record of what happened
-- **Success file**: A list of all pages successfully archived
-- **Failed file**: Any pages that couldn't be archived (if any)
-
-These files will be saved in the same folder as the tool.
-
-## Common Questions
-
-**How long does archiving take?**
-It depends on the size of the site. A small site might take minutes, while a large site could take hours.
-
-**Is there a limit to how many pages I can archive?**
-The tool itself has no limits, but the Internet Archive may have rate limits. The tool automatically uses delays to stay within these limits.
-
-**Do I need to provide my email address?**
-It's recommended but not required. Including your email helps the Internet Archive contact you if there are any issues.
-
-**What if the archiving process gets interrupted?**
-You can always restart it. The tool creates files of failed URLs that you can retry later.
-
-## Getting Help
-
-If you run into problems or have questions, please check the GitHub issues page or open a new issue describing your problem.
+- Set reasonable delays between requests (the default is 30 seconds)
+- Provide your email when submitting to larger sites
+- Respect the terms of service of both the Internet Archive and target websites
+- Consider donating to the Internet Archive if you find this tool valuable
 
 ## License
 
-This project is available under the MIT License, meaning it's free to use, modify, and share.
+This project is licensed under the MIT License. See the `LICENSE` file for details.
+
+## Contributing
+
+Contributions are welcome! To contribute:
+
+1. Fork the repository
+2. Create a new branch for your feature
+3. Add your changes
+4. Submit a pull request
+
+For bugs, questions, or feature requests, please open an issue on GitHub.
