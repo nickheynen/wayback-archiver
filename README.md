@@ -85,33 +85,62 @@ python3 wayback_archiver.py https://example.com --email your-email@example.com
 
 There are three ways to provide S3 credentials, in order of security preference:
 
-1. **Environment Variables** (Recommended):
+1. **Environment Variables** (Recommended for advanced users):
 ```bash
-# Set the variables
+# Mac/Linux: Set the variables
 export IA_S3_ACCESS_KEY="your_access_key"
 export IA_S3_SECRET_KEY="your_secret_key"
+
+# Windows: Set the variables
+set IA_S3_ACCESS_KEY=your_access_key
+set IA_S3_SECRET_KEY=your_secret_key
 
 # Run the tool with --use-env-keys flag
 python3 wayback_archiver.py https://example.com --use-env-keys
 ```
 
-2. **Configuration File**:
-Create a config file (e.g., `~/.ia_credentials.ini`):
+2. **Configuration File** (Recommended for beginners):
+
+**Step-by-step guide:**
+
+a) Create a config file with your favorite text editor:
+
+Mac/Linux:
+```bash
+# Create the file
+touch ~/.ia_credentials.ini
+
+# Set secure permissions (only you can read it)
+chmod 600 ~/.ia_credentials.ini
+
+# Edit with your preferred editor
+nano ~/.ia_credentials.ini
+```
+
+Windows: Create a file named `.ia_credentials.ini` in your user folder (e.g., `C:\Users\yourusername\.ia_credentials.ini`)
+
+b) Add the following content to the file, replacing with your actual keys:
 ```ini
 [default]
 s3_access_key = your_access_key
 s3_secret_key = your_secret_key
 ```
 
-Then run:
+c) Run the archiver with your config file:
 ```bash
+# Mac/Linux
 python3 wayback_archiver.py https://example.com --config-file ~/.ia_credentials.ini
+
+# Windows
+python3 wayback_archiver.py https://example.com --config-file C:\Users\yourusername\.ia_credentials.ini
 ```
 
 3. **Command Line** (Not recommended for security reasons):
 ```bash
 python3 wayback_archiver.py https://example.com --s3-access-key YOUR_ACCESS_KEY --s3-secret-key YOUR_SECRET_KEY
 ```
+
+**Note**: Your credentials will remain secure in the config file for future use, so you only need to set them up once.
 
 ### HTTPS and Protocol Options
 
