@@ -6,22 +6,28 @@ import argparse
 import json
 from datetime import datetime
 import logging
+from urllib.robotparser import RobotFileParser
 
 class WaybackArchiver:
-    def __init__(self, subdomain, email=None, delay=30, exclude_patterns=None, 
-                max_retries=3, backoff_factor=2.0, batch_size=100, batch_pause=300):
+    def __init__(self, subdomain, email=None, delay=15, exclude_patterns=None, 
+                max_retries=3, backoff_factor=1.5, batch_size=150, batch_pause=180,
+                respect_robots_txt=True, https_only=True, s3_access_key=None, s3_secret_key=None):
         """
         Initialize the WaybackArchiver instance with the target subdomain and configuration options.
 
         Args:
             subdomain (str): The full subdomain URL to archive (e.g., 'https://blog.example.com').
             email (str, optional): Email address for the Wayback Machine API. Recommended for high-volume archiving.
-            delay (int, optional): Delay in seconds between API requests to avoid rate-limiting (default: 30 seconds).
+            delay (int, optional): Delay in seconds between API requests to avoid rate-limiting (default: 15 seconds).
             exclude_patterns (list, optional): List of URL patterns to exclude from crawling (e.g., ['/tag/', '/category/']).
             max_retries (int, optional): Maximum number of retry attempts for failed archive requests (default: 3).
-            backoff_factor (float, optional): Exponential backoff factor for retries (default: 2.0).
-            batch_size (int, optional): Number of URLs to process before taking a longer pause (default: 100).
-            batch_pause (int, optional): Duration in seconds to pause between batches (default: 300 seconds).
+            backoff_factor (float, optional): Exponential backoff factor for retries (default: 1.5).
+            batch_size (int, optional): Number of URLs to process before taking a longer pause (default: 150).
+            batch_pause (int, optional): Duration in seconds to pause between batches (default: 180 seconds).
+            respect_robots_txt (bool, optional): Whether to respect robots.txt directives (default: True).
+            https_only (bool, optional): Whether to only crawl and archive HTTPS URLs (default: True).
+            s3_access_key (str, optional): Internet Archive S3 access key for authentication.
+            s3_secret_key (str, optional): Internet Archive S3 secret key for authentication.
         """
         self.subdomain = subdomain
         self.base_domain = urlparse(subdomain).netloc
@@ -35,13 +41,89 @@ class WaybackArchiver:
         self.visited_urls = set()
         self.urls_to_archive = set()
         self.successful_urls = set()
+        self.respect_robots_txt = respect_robots_txt
+        self.https_only = https_only
+        self.s3_access_key = s3_access_key
+        self.s3_secret_key = s3_secret_key
+        self.robots_parsers = {}  # Cache for robots.txt parsers
+        
         logging.basicConfig(
             filename='wayback_archiver.log',
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s'
         )
         logging.info("WaybackArchiver initialized.")
+        if self.respect_robots_txt:
+            logging.info("Robots.txt support enabled.")
+        if self.https_only:
+            logging.info("HTTPS-only mode enabled. HTTP URLs will be skipped.")
         
+        if self.s3_access_key and self.s3_secret_key:
+            logging.info("Using Internet Archive S3 API authentication.")
+        
+    def _get_robots_parser(self, url):
+        """
+        Fetch and parse the robots.txt file for a given URL's domain.
+        
+        Args:
+            url (str): The URL to get the robots.txt parser for.
+            
+        Returns:
+            RobotFileParser: The parser for the domain's robots.txt.
+        """
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        
+        # Check if we already have a parser for this domain
+        if base_url in self.robots_parsers:
+            return self.robots_parsers[base_url]
+        
+        # Create a new parser
+        rp = RobotFileParser()
+        robots_url = f"{base_url}/robots.txt"
+        
+        try:
+            print(f"Fetching robots.txt from {robots_url}")
+            response = requests.get(robots_url, timeout=10)
+            if response.status_code == 200:
+                rp.parse(response.text.splitlines())
+                logging.info(f"Successfully parsed robots.txt from {robots_url}")
+            else:
+                logging.warning(f"Failed to fetch robots.txt from {robots_url}: Status code {response.status_code}")
+                # If we can't fetch robots.txt, assume everything is allowed
+                rp.allow_all = True
+        except Exception as e:
+            logging.error(f"Error fetching robots.txt from {robots_url}: {str(e)}")
+            # If there's an error, assume everything is allowed
+            rp.allow_all = True
+        
+        # Cache the parser
+        self.robots_parsers[base_url] = rp
+        return rp
+        
+    def _is_url_allowed(self, url):
+        """
+        Check if a URL is allowed by the domain's robots.txt.
+        
+        Args:
+            url (str): The URL to check.
+            
+        Returns:
+            bool: True if the URL is allowed, False otherwise.
+        """
+        if not self.respect_robots_txt:
+            return True
+            
+        user_agent = "Wayback_Machine_Subdomain_Archiver"
+        parser = self._get_robots_parser(url)
+        allowed = parser.can_fetch(user_agent, url)
+        
+        if not allowed:
+            logging.info(f"URL {url} disallowed by robots.txt")
+            print(f"Skipping {url} (disallowed by robots.txt)")
+            
+        return allowed
+
     def crawl(self, max_pages=None):
         """
         Crawl the subdomain to discover all URLs within the same domain.
@@ -68,6 +150,10 @@ class WaybackArchiver:
             return
             
         if max_pages is not None and len(self.visited_urls) >= max_pages:
+            return
+            
+        # Check robots.txt rules before crawling
+        if not self._is_url_allowed(url):
             return
             
         self.visited_urls.add(url)
@@ -100,6 +186,11 @@ class WaybackArchiver:
                     if pattern in parsed_url.path:
                         should_exclude = True
                         break
+                
+                # Skip non-HTTPS URLs if https_only is enabled
+                if self.https_only and parsed_url.scheme != 'https':
+                    print(f"Skipping non-HTTPS URL: {full_url}")
+                    continue
                 
                 if parsed_url.netloc == self.base_domain and not should_exclude and full_url not in self.visited_urls:
                     self._crawl_page(full_url, max_pages)
@@ -217,11 +308,15 @@ class WaybackArchiver:
             'url': url,
             'capture_all': '1',  # Capture page with all of its requisites
             'capture_outlinks': '0',  # Don't capture outlinks
-            'delay': '2',  # Seconds of delay between requests for requisites
-            'if_not_archived_within': '86400'  # Only archive if not captured in the last 24 hours
+            'delay': '1',  # Seconds of delay between requests for requisites
+            'if_not_archived_within': '432000'  # Only archive if not captured in the last 5 days (5*24*60*60=432000)
         }
         
-        if self.email:
+        # Add authentication parameters
+        if self.s3_access_key and self.s3_secret_key:
+            params['s3_access_key'] = self.s3_access_key
+            params['s3_secret_key'] = self.s3_secret_key
+        elif self.email:
             params['email'] = self.email
             
         headers = {
@@ -281,12 +376,12 @@ def main():
     parser = argparse.ArgumentParser(description='Archive an entire subdomain using the Wayback Machine')
     parser.add_argument('subdomain', help='The subdomain to archive (e.g., https://blog.example.com)')
     parser.add_argument('--email', help='Your email address (recommended for API use and necessary for high volume archiving)')
-    parser.add_argument('--delay', type=int, default=30, help='Delay between archive requests in seconds (default: 30, recommended minimum for API politeness)')
+    parser.add_argument('--delay', type=int, default=15, help='Delay between archive requests in seconds (default: 15, minimum recommended is 10)')
     parser.add_argument('--max-pages', type=int, help='Maximum number of pages to crawl (default: unlimited)')
     parser.add_argument('--max-retries', type=int, default=3, help='Maximum retry attempts for failed archives (default: 3)')
-    parser.add_argument('--backoff-factor', type=float, default=2.0, help='Exponential backoff factor for retries (default: 2.0)')
-    parser.add_argument('--batch-size', type=int, default=100, help='Process URLs in batches of this size and pause between batches (default: 100)')
-    parser.add_argument('--batch-pause', type=int, default=300, help='Seconds to pause between batches (default: 300)')
+    parser.add_argument('--backoff-factor', type=float, default=1.5, help='Exponential backoff factor for retries (default: 1.5)')
+    parser.add_argument('--batch-size', type=int, default=150, help='Process URLs in batches of this size and pause between batches (default: 150)')
+    parser.add_argument('--batch-pause', type=int, default=180, help='Seconds to pause between batches (default: 180)')
     parser.add_argument('--exclude', nargs='+', 
                       default=['/tag/', '/category/', '/author/', '/page/', '/comment-page-', 
                                '/wp-json/', '/feed/', '/wp-content/cache/', '/wp-admin/',
@@ -294,6 +389,10 @@ def main():
                                '/privacy-policy/', '/terms-of-service/', '/404/', '/error/'],
                       help='URL patterns to exclude (WordPress defaults and common patterns: /tag/, /category/, etc.)')
     parser.add_argument('--retry-file', help='JSON file containing previously failed URLs to retry')
+    parser.add_argument('--ignore-robots-txt', action='store_true', help='Ignore robots.txt directives (not recommended)')
+    parser.add_argument('--include-http', action='store_true', help='Include HTTP URLs in addition to HTTPS (not recommended)')
+    parser.add_argument('--s3-access-key', help='Internet Archive S3 access key for authentication')
+    parser.add_argument('--s3-secret-key', help='Internet Archive S3 secret key for authentication')
     
     args = parser.parse_args()
     
@@ -305,7 +404,11 @@ def main():
         max_retries=args.max_retries,
         backoff_factor=args.backoff_factor,
         batch_size=args.batch_size,
-        batch_pause=args.batch_pause
+        batch_pause=args.batch_pause,
+        respect_robots_txt=not args.ignore_robots_txt,
+        https_only=not args.include_http,
+        s3_access_key=args.s3_access_key,
+        s3_secret_key=args.s3_secret_key
     )
     
     try:
