@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wayback Archiver - Web Tool for Internet Archive</title>
+    <link rel="stylesheet" href="styles.css">
+    <meta name="description" content="Wayback Archiver - A Python web tool to automatically crawl and archive entire subdomains in the Internet Archive's Wayback Machine.">
+</head>
+<body>
+    <header>
+        <h1>Wayback Archiver</h1>
+        <p>A Python web tool to automatically crawl and archive entire subdomains in the Internet Archive's Wayback Machine.</p>
+        <div>
+            <a href="https://github.com/nickheynen/wayback-archiver" class="button">View on GitHub</a>
+            <a href="demo.html" class="button">Try Interactive Demo</a>
+        </div>
+    </header>
+
+    <section>
+        <h2>Overview</h2>
+        <p>
+            Wayback Archiver helps preserve web content by crawling all pages within a specified subdomain 
+            and submitting them to the Internet Archive's Wayback Machine. This is particularly useful for:
+        </p>
+        <ul>
+            <li>Preserving content from websites that might be shut down</li>
+            <li>Creating complete historical snapshots of blogs or documentation sites</li>
+            <li>Ensuring important information remains available even if the original site changes</li>
+            <li>Archiving personal projects, portfolios, or academic websites</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>Features</h2>
+        <div class="features">
+            <div class="feature">
+                <h3>User-friendly Interface</h3>
+                <p>Easy-to-use web UI for configuring and monitoring archiving jobs</p>
+            </div>
+            <div class="feature">
+                <h3>Recursive Crawling</h3>
+                <p>Automatically discovers and follows links within the target subdomain</p>
+            </div>
+            <div class="feature">
+                <h3>Smart Filtering</h3>
+                <p>Excludes common paths that would result in duplicate content</p>
+            </div>
+            <div class="feature">
+                <h3>Batch Processing</h3>
+                <p>Handles large sites by processing URLs in batches with configurable pauses</p>
+            </div>
+            <div class="feature">
+                <h3>Resilient Operation</h3>
+                <p>Retry mechanism with exponential backoff for failed archive attempts</p>
+            </div>
+            <div class="feature">
+                <h3>Detailed Logging</h3>
+                <p>Comprehensive logs and output files to track progress</p>
+            </div>
+        </div>
+    </section>
+    
+    <section>
+        <h2>Demo Screenshot</h2>
+        <div class="screenshot">
+            <img src="screenshot-placeholder.svg" alt="Wayback Archiver Web Interface Screenshot" width="600">
+            <p><em>Screenshot of the Wayback Archiver web interface in action</em></p>
+        </div>
+    </section>
+
+    <section>
+        <h2>Installation</h2>
+        <p>1. Clone or download the repository:</p>
+        <pre>git clone https://github.com/nickheynen/wayback-archiver.git
+cd wayback-archiver</pre>
+
+        <p>2. Install the required packages:</p>
+        <pre>pip install -r requirements.txt</pre>
+
+        <p>3. Start the application:</p>
+        <pre>python3 web_interface.py</pre>
+
+        <p>4. Open your browser and navigate to <code>http://127.0.0.1:5000</code></p>
+    </section>
+
+    <section>
+        <h2>Deployment Options</h2>
+        <p>The web interface can be deployed using various hosting options:</p>
+        
+        <h3>PythonAnywhere</h3>
+        <ol>
+            <li>Create a free account on <a href="https://www.pythonanywhere.com/" target="_blank">PythonAnywhere</a></li>
+            <li>Upload the project files or clone the repository</li>
+            <li>Set up a web app with Flask</li>
+            <li>Configure your WSGI file to point to the <code>web_interface.py</code> application</li>
+        </ol>
+        
+        <h3>Heroku</h3>
+        <ol>
+            <li>A Procfile is already included in the repository</li>
+            <li>Deploy to Heroku using the Heroku CLI or GitHub integration</li>
+        </ol>
+    </section>
+
+    <footer>
+        <p>Created by <a href="https://github.com/nickheynen">Nick Heynen</a> | <a href="https://github.com/nickheynen/wayback-archiver/blob/main/LICENSE">MIT License</a></p>
+    </footer>
+</body>
+</html>
