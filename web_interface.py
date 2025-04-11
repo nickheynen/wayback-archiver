@@ -13,7 +13,7 @@ archiver_status = {
 }
 status_lock = threading.Lock()
 
-def run_archiver(subdomain, email, delay, max_pages, exclude_patterns):
+def run_archiver(subdomain, email, delay, max_pages, exclude_patterns, respect_robots_txt=True):
     """
     Run the WaybackArchiver in a separate thread.
     """
@@ -32,7 +32,8 @@ def run_archiver(subdomain, email, delay, max_pages, exclude_patterns):
             subdomain=subdomain,
             email=email,
             delay=delay,
-            exclude_patterns=exclude_patterns
+            exclude_patterns=exclude_patterns,
+            respect_robots_txt=respect_robots_txt
         )
         
         # Update status for crawling phase
@@ -121,10 +122,13 @@ def start_archiving():
         exclude_patterns_str = request.form.get('exclude_patterns', '')
         exclude_patterns = [p.strip() for p in exclude_patterns_str.split(',') if p.strip()]
         
+        # Handle robots.txt option
+        respect_robots_txt = request.form.get('respect_robots_txt', 'true').lower() != 'false'
+        
         # Start the archiver in a separate thread
         thread = threading.Thread(
             target=run_archiver,
-            args=(subdomain, email, delay, max_pages, exclude_patterns)
+            args=(subdomain, email, delay, max_pages, exclude_patterns, respect_robots_txt)
         )
         thread.start()
         

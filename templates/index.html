@@ -13,6 +13,7 @@
             const delay = parseInt(document.getElementById('delay').value, 10);
             const maxPages = parseInt(document.getElementById('max_pages').value, 10) || null;
             const excludePatterns = document.getElementById('exclude_patterns').value;
+            const respectRobotsTxt = document.getElementById('respect_robots_txt').checked;
 
             if (isNaN(delay) || delay <= 0) {
                 alert("Please enter a valid delay (greater than 0).");
@@ -31,6 +32,7 @@
             formData.append('delay', delay);
             formData.append('max_pages', maxPages || '');
             formData.append('exclude_patterns', excludePatterns);
+            formData.append('respect_robots_txt', respectRobotsTxt);
 
             fetch('/start', {
                 method: 'POST',
@@ -92,6 +94,8 @@
         <input type="number" id="max_pages" name="max_pages"><br><br>
         <label for="exclude_patterns">Exclude Patterns (comma-separated):</label>
         <input type="text" id="exclude_patterns" name="exclude_patterns" value="/tag/,/category/"><br><br>
+        <input type="checkbox" id="respect_robots_txt" name="respect_robots_txt" checked>
+        <label for="respect_robots_txt">Respect robots.txt</label><br><br>
         <button type="submit">Start Archiving</button>
     </form>
     <h2>Status</h2>
