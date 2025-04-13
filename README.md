@@ -19,16 +19,23 @@ Wayback Archiver helps preserve web content by crawling all pages within a speci
 - **Media Handling**: Excludes image files from archiving by default (configurable)
 - **Configurable Parameters**:
   - Control crawl depth with max pages limit
+  - Limit recursive crawl depth to prevent excessive crawling
   - Set delays between requests for API politeness
   - Custom exclude patterns for site-specific requirements
   - HTTPS-only mode (enabled by default)
   - Image exclusion option (enabled by default)
 - **Batch Processing**: Handles large sites by processing URLs in batches with configurable pauses
 - **Resilient Operation**:
+  - Persistent connections with DNS caching to reduce connection issues
   - Retry mechanism with exponential backoff for failed archive attempts
+  - Graceful error handling and interruption recovery
   - Ability to resume archiving from previously failed URLs
   - Robots.txt respect for ethical crawling
 - **Detailed Logging**: Comprehensive logs and output files to track progress and results
+- **Security Features**:
+  - CSRF protection in the web interface
+  - Secure credential handling options
+  - Input validation and sanitization
 
 ## Screenshot
 
@@ -36,11 +43,13 @@ Wayback Archiver helps preserve web content by crawling all pages within a speci
 
 ## Requirements
 
-- Python 3.7+
-- Required packages:
+- Python 3.8+
+- Main dependencies (installed automatically via requirements.txt):
   - `requests`: For HTTP operations
   - `beautifulsoup4`: For HTML parsing
   - `flask`: For the web interface
+  - `urllib3` & `dnspython`: For improved networking and DNS resolution
+  - `gunicorn`: For production deployment
 
 ## Installation
 
@@ -76,7 +85,24 @@ Wayback Archiver helps preserve web content by crawling all pages within a speci
 You can run the archiver directly from the command line:
 
 ```bash
-python3 wayback_archiver.py https://example.com --email your-email@example.com --delay 15 --max-pages 500
+python3 wayback_archiver.py https://example.com --email your-email@example.com --delay 15 --max-pages 500 --max-depth 10
+```
+
+Common command line options:
+
+```
+--delay DELAY           Delay between archive requests in seconds (default: 15)
+--max-pages MAX_PAGES   Maximum number of pages to crawl (default: unlimited)
+--max-depth MAX_DEPTH   Maximum crawl depth from starting URL (default: 10)
+--max-retries MAX_RETRIES
+                       Maximum retry attempts for failed archives (default: 3)
+--backoff-factor BACKOFF_FACTOR
+                       Exponential backoff factor for retries (default: 1.5)
+--batch-size BATCH_SIZE
+                       Process URLs in batches of this size (default: 150)
+--batch-pause BATCH_PAUSE
+                       Seconds to pause between batches (default: 180)
+--verbose, -v           Enable verbose logging
 ```
 
 ### Authentication Options
@@ -195,9 +221,16 @@ The web interface can be deployed online using various hosting services. Here's 
 
 ## Output Files
 
-- **Log File**: `wayback_archiver.log` contains detailed logs of the archiving process.
-- **Successful URLs**: Saved to a JSON file named `successful_urls_<domain>_<timestamp>.json`.
-- **Failed URLs**: Saved to a JSON file named `failed_urls_<domain>_<timestamp>.json`.
+By default, output files are saved to the `wayback_results` directory:
+
+- **Log Files**: 
+  - `wayback_archiver.log`: Contains detailed logs of the archiving process
+  - `wayback_web.log`: Contains logs from the web interface (when using web UI)
+- **Results**: 
+  - `wayback_results/successful_urls_<domain>_<timestamp>.json`: Contains all successfully archived URLs
+  - `wayback_results/failed_urls_<domain>_<timestamp>.json`: Contains URLs that failed to archive
+
+You can use the `/results` endpoint in the web interface to view archived results.
 
 ## API Usage Notice
 
