@@ -13,7 +13,8 @@ from urllib.robotparser import RobotFileParser
 class WaybackArchiver:
     def __init__(self, subdomain, email=None, delay=15, exclude_patterns=None, 
                 max_retries=3, backoff_factor=1.5, batch_size=150, batch_pause=180,
-                respect_robots_txt=True, https_only=True, s3_access_key=None, s3_secret_key=None):
+                respect_robots_txt=True, https_only=True, s3_access_key=None, s3_secret_key=None,
+                exclude_images=True):
         """
         Initialize the WaybackArchiver instance with the target subdomain and configuration options.
 
@@ -30,6 +31,7 @@ class WaybackArchiver:
             https_only (bool, optional): Whether to only crawl and archive HTTPS URLs (default: True).
             s3_access_key (str, optional): Internet Archive S3 access key for authentication.
             s3_secret_key (str, optional): Internet Archive S3 secret key for authentication.
+            exclude_images (bool, optional): Whether to exclude image files from archiving (default: True).
         """
         self.subdomain = subdomain
         self.base_domain = urlparse(subdomain).netloc
@@ -47,6 +49,7 @@ class WaybackArchiver:
         self.https_only = https_only
         self.s3_access_key = s3_access_key
         self.s3_secret_key = s3_secret_key
+        self.exclude_images = exclude_images
         self.robots_parsers = {}  # Cache for robots.txt parsers
         
         logging.basicConfig(
@@ -59,6 +62,8 @@ class WaybackArchiver:
             logging.info("Robots.txt support enabled.")
         if self.https_only:
             logging.info("HTTPS-only mode enabled. HTTP URLs will be skipped.")
+        if self.exclude_images:
+            logging.info("Image exclusion enabled. Image files will be skipped.")
         
         if self.s3_access_key and self.s3_secret_key:
             logging.info("Using Internet Archive S3 API authentication.")
@@ -140,6 +145,29 @@ class WaybackArchiver:
             logging.error(f"Error during crawling: {str(e)}")
         print(f"Crawling completed. Found {len(self.urls_to_archive)} URLs to archive.")
         
+    def _is_image_url(self, url):
+        """
+        Check if a URL points to an image file.
+        
+        Args:
+            url (str): The URL to check.
+            
+        Returns:
+            bool: True if the URL points to an image file, False otherwise.
+        """
+        # Common image file extensions
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico', '.tiff', '.tif']
+        
+        parsed_url = urlparse(url)
+        path_lower = parsed_url.path.lower()
+        
+        # Check if the URL ends with an image extension
+        for ext in image_extensions:
+            if path_lower.endswith(ext):
+                return True
+                
+        return False
+
     def _crawl_page(self, url, max_pages=None):
         """
         Recursively crawl a single page to extract all links within the same subdomain.
@@ -156,6 +184,12 @@ class WaybackArchiver:
             
         # Check robots.txt rules before crawling
         if not self._is_url_allowed(url):
+            return
+        
+        # Skip image files if exclude_images is enabled
+        if self.exclude_images and self._is_image_url(url):
+            print(f"Skipping image file: {url}")
+            self.visited_urls.add(url)  # Mark as visited to avoid revisiting
             return
             
         self.visited_urls.add(url)
@@ -192,6 +226,12 @@ class WaybackArchiver:
                 # Skip non-HTTPS URLs if https_only is enabled
                 if self.https_only and parsed_url.scheme != 'https':
                     print(f"Skipping non-HTTPS URL: {full_url}")
+                    continue
+                
+                # Skip image files if exclude_images is enabled
+                if self.exclude_images and self._is_image_url(full_url):
+                    print(f"Skipping image file: {full_url}")
+                    self.visited_urls.add(full_url)  # Mark as visited to avoid revisiting
                     continue
                 
                 if parsed_url.netloc == self.base_domain and not should_exclude and full_url not in self.visited_urls:
@@ -393,6 +433,7 @@ def main():
     parser.add_argument('--retry-file', help='JSON file containing previously failed URLs to retry')
     parser.add_argument('--ignore-robots-txt', action='store_true', help='Ignore robots.txt directives (not recommended)')
     parser.add_argument('--include-http', action='store_true', help='Include HTTP URLs in addition to HTTPS (not recommended)')
+    parser.add_argument('--include-images', action='store_true', help='Include image files in archiving (default: exclude images)')
     parser.add_argument('--s3-access-key', help='Internet Archive S3 access key for authentication (not recommended, use --use-env-keys or --config-file instead)')
     parser.add_argument('--s3-secret-key', help='Internet Archive S3 secret key for authentication (not recommended, use --use-env-keys or --config-file instead)')
     parser.add_argument('--use-env-keys', action='store_true', help='Use S3 credentials from IA_S3_ACCESS_KEY and IA_S3_SECRET_KEY environment variables')
@@ -451,7 +492,8 @@ def main():
         respect_robots_txt=not args.ignore_robots_txt,
         https_only=not args.include_http,
         s3_access_key=s3_access_key,
-        s3_secret_key=s3_secret_key
+        s3_secret_key=s3_secret_key,
+        exclude_images=not args.include_images
     )
     
     try:

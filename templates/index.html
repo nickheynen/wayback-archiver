@@ -4,6 +4,67 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wayback Archiver</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #3498db;
+            margin-top: 20px;
+        }
+        form {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        label {
+            display: inline-block;
+            width: 220px;
+            margin-bottom: 5px;
+        }
+        input[type="text"], input[type="email"], input[type="number"], input[type="password"] {
+            width: 300px;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        #status, #progress {
+            font-weight: bold;
+        }
+        .auth-divider {
+            text-align: center;
+            margin: 15px 0;
+            font-weight: bold;
+        }
+    </style>
     <script>
         let statusInterval;
 
@@ -14,6 +75,11 @@
             const maxPages = parseInt(document.getElementById('max_pages').value, 10) || null;
             const excludePatterns = document.getElementById('exclude_patterns').value;
             const respectRobotsTxt = document.getElementById('respect_robots_txt').checked;
+            const httpsOnly = document.getElementById('https_only').checked;
+            const excludeImages = document.getElementById('exclude_images').checked;
+            const s3AccessKey = document.getElementById('s3_access_key').value;
+            const s3SecretKey = document.getElementById('s3_secret_key').value;
+            const configFile = document.getElementById('config_file').value;
 
             if (isNaN(delay) || delay <= 0) {
                 alert("Please enter a valid delay (greater than 0).");
@@ -33,6 +99,11 @@
             formData.append('max_pages', maxPages || '');
             formData.append('exclude_patterns', excludePatterns);
             formData.append('respect_robots_txt', respectRobotsTxt);
+            formData.append('https_only', httpsOnly);
+            formData.append('exclude_images', excludeImages);
+            formData.append('s3_access_key', s3AccessKey);
+            formData.append('s3_secret_key', s3SecretKey);
+            formData.append('config_file', configFile);
 
             fetch('/start', {
                 method: 'POST',
@@ -84,18 +155,66 @@
 <body>
     <h1>Wayback Archiver</h1>
     <form onsubmit="event.preventDefault(); startArchiving();">
-        <label for="subdomain">Subdomain:</label>
-        <input type="text" id="subdomain" name="subdomain" required><br><br>
-        <label for="email">Email (optional):</label>
-        <input type="email" id="email" name="email"><br><br>
-        <label for="delay">Delay (seconds):</label>
-        <input type="number" id="delay" name="delay" value="30" required><br><br>
-        <label for="max_pages">Max Pages (optional):</label>
-        <input type="number" id="max_pages" name="max_pages"><br><br>
-        <label for="exclude_patterns">Exclude Patterns (comma-separated):</label>
-        <input type="text" id="exclude_patterns" name="exclude_patterns" value="/tag/,/category/"><br><br>
-        <input type="checkbox" id="respect_robots_txt" name="respect_robots_txt" checked>
-        <label for="respect_robots_txt">Respect robots.txt</label><br><br>
+        <div class="section">
+            <h2>Basic Settings</h2>
+            <div>
+                <label for="subdomain">Subdomain:</label>
+                <input type="text" id="subdomain" name="subdomain" placeholder="https://blog.example.com" required>
+            </div>
+            <div>
+                <label for="email">Email (optional):</label>
+                <input type="email" id="email" name="email" placeholder="your@email.com">
+            </div>
+            <div>
+                <label for="delay">Delay (seconds):</label>
+                <input type="number" id="delay" name="delay" value="30" required>
+            </div>
+            <div>
+                <label for="max_pages">Max Pages (optional):</label>
+                <input type="number" id="max_pages" name="max_pages" placeholder="Leave empty for no limit">
+            </div>
+            <div>
+                <label for="exclude_patterns">Exclude Patterns:</label>
+                <input type="text" id="exclude_patterns" name="exclude_patterns" value="/tag/,/category/" placeholder="Comma-separated patterns">
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Options</h2>
+            <div>
+                <input type="checkbox" id="respect_robots_txt" name="respect_robots_txt" checked>
+                <label for="respect_robots_txt">Respect robots.txt</label>
+            </div>
+            <div>
+                <input type="checkbox" id="https_only" name="https_only" checked>
+                <label for="https_only">HTTPS only (skip HTTP URLs)</label>
+            </div>
+            <div>
+                <input type="checkbox" id="exclude_images" name="exclude_images" checked>
+                <label for="exclude_images">Exclude image files</label>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Authentication (optional)</h2>
+            <p>Enter S3 credentials directly:</p>
+            <div>
+                <label for="s3_access_key">S3 Access Key:</label>
+                <input type="text" id="s3_access_key" name="s3_access_key">
+            </div>
+            <div>
+                <label for="s3_secret_key">S3 Secret Key:</label>
+                <input type="password" id="s3_secret_key" name="s3_secret_key">
+            </div>
+            
+            <div class="auth-divider">OR</div>
+            
+            <div>
+                <label for="config_file">Config File Path:</label>
+                <input type="text" id="config_file" name="config_file" placeholder="/path/to/config.ini">
+            </div>
+        </div>
+        
         <button type="submit">Start Archiving</button>
     </form>
     <h2>Status</h2>

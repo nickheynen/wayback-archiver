@@ -1,5 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import threading
+import os
+import configparser
 from wayback_archiver import WaybackArchiver
 
 app = Flask(__name__)
@@ -13,7 +15,8 @@ archiver_status = {
 }
 status_lock = threading.Lock()
 
-def run_archiver(subdomain, email, delay, max_pages, exclude_patterns, respect_robots_txt=True):
+def run_archiver(subdomain, email, delay, max_pages, exclude_patterns, respect_robots_txt=True, 
+               https_only=True, exclude_images=True, s3_access_key=None, s3_secret_key=None, config_file=None):
     """
     Run the WaybackArchiver in a separate thread.
     """
@@ -27,13 +30,30 @@ def run_archiver(subdomain, email, delay, max_pages, exclude_patterns, respect_r
         })
 
     try:
+        # Handle S3 credentials from config file
+        if config_file and os.path.exists(config_file):
+            try:
+                config = configparser.ConfigParser()
+                config.read(config_file)
+                s3_access_key = config.get('default', 's3_access_key')
+                s3_secret_key = config.get('default', 's3_secret_key')
+                with status_lock:
+                    archiver_status["message"] = f"Using S3 credentials from config file: {config_file}"
+            except (configparser.NoSectionError, configparser.NoOptionError) as e:
+                with status_lock:
+                    archiver_status["message"] = f"Error reading config file: {str(e)}"
+        
         # Create and configure the archiver
         archiver = WaybackArchiver(
             subdomain=subdomain,
             email=email,
             delay=delay,
             exclude_patterns=exclude_patterns,
-            respect_robots_txt=respect_robots_txt
+            respect_robots_txt=respect_robots_txt,
+            https_only=https_only,
+            exclude_images=exclude_images,
+            s3_access_key=s3_access_key,
+            s3_secret_key=s3_secret_key
         )
         
         # Update status for crawling phase
@@ -122,13 +142,27 @@ def start_archiving():
         exclude_patterns_str = request.form.get('exclude_patterns', '')
         exclude_patterns = [p.strip() for p in exclude_patterns_str.split(',') if p.strip()]
         
-        # Handle robots.txt option
+        # Handle options
         respect_robots_txt = request.form.get('respect_robots_txt', 'true').lower() != 'false'
+        https_only = request.form.get('https_only', 'true').lower() != 'false'
+        exclude_images = request.form.get('exclude_images', 'true').lower() != 'false'
+        
+        # Handle S3 authentication
+        s3_access_key = request.form.get('s3_access_key', '') or None
+        s3_secret_key = request.form.get('s3_secret_key', '') or None
+        config_file = request.form.get('config_file', '') or None
         
         # Start the archiver in a separate thread
         thread = threading.Thread(
             target=run_archiver,
-            args=(subdomain, email, delay, max_pages, exclude_patterns, respect_robots_txt)
+            args=(subdomain, email, delay, max_pages, exclude_patterns, respect_robots_txt),
+            kwargs={
+                'https_only': https_only,
+                'exclude_images': exclude_images,
+                's3_access_key': s3_access_key,
+                's3_secret_key': s3_secret_key,
+                'config_file': config_file
+            }
         )
         thread.start()
         
