@@ -16,11 +16,13 @@ Wayback Archiver helps preserve web content by crawling all pages within a speci
 - **User-friendly Web Interface**: Easy-to-use UI for configuring and monitoring archiving jobs
 - **Recursive Crawling**: Automatically discovers and follows links within the target subdomain
 - **Smart Filtering**: Excludes common paths that would result in duplicate content (like tag pages, categories, etc.)
+- **Media Handling**: Excludes image files from archiving by default (configurable)
 - **Configurable Parameters**:
   - Control crawl depth with max pages limit
   - Set delays between requests for API politeness
   - Custom exclude patterns for site-specific requirements
   - HTTPS-only mode (enabled by default)
+  - Image exclusion option (enabled by default)
 - **Batch Processing**: Handles large sites by processing URLs in batches with configurable pauses
 - **Resilient Operation**:
   - Retry mechanism with exponential backoff for failed archive attempts
@@ -62,9 +64,12 @@ Wayback Archiver helps preserve web content by crawling all pages within a speci
 
 2. Open your browser and navigate to `http://127.0.0.1:5000`.
 
-3. Fill out the form with your target subdomain and configuration options.
+3. Fill out the form with your target subdomain and configuration options:
+   - Basic settings: URL, email, delay, page limits, exclude patterns
+   - Options: Control for robots.txt, HTTPS-only mode, image exclusion
+   - Authentication: Enter S3 credentials directly or specify a config file path
 
-4. Click "Start Archiving" and monitor the progress.
+4. Click "Start Archiving" and monitor the progress in real-time.
 
 ## Command Line Usage
 
@@ -154,6 +159,13 @@ python3 wayback_archiver.py https://example.com --include-http
 By default, the tool respects robots.txt. To override:
 ```bash
 python3 wayback_archiver.py https://example.com --ignore-robots-txt
+```
+
+### Image Files Control
+
+By default, image files (jpg, png, gif, etc.) are excluded from archiving. To include them:
+```bash
+python3 wayback_archiver.py https://example.com --include-images
 ```
 
 For all available options:
