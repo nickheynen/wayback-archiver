@@ -13,6 +13,7 @@ from typing import List, Set, Dict, Optional, Union, Any
 from collections import deque
 import re
 import pathlib
+import secrets
 
 # Setup logging configuration once at module level
 logger = logging.getLogger("wayback_archiver")
