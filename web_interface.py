@@ -27,6 +27,11 @@ def generate_csrf_token() -> str:
     if '_csrf_token' not in request.cookies:
         token = secrets.token_hex(16)
         app.jinja_env.globals['csrf_token'] = token
+        # Set cookie on first response
+        @app.after_request
+        def set_csrf_cookie(response):
+            response.set_cookie('_csrf_token', token, httponly=True, samesite='Strict')
+            return response
         return token
     return request.cookies.get('_csrf_token')
 
@@ -98,7 +103,7 @@ def run_archiver(subdomain: str, email: Optional[str], delay: int, max_pages: Op
                 s3_secret_key = config.get('default', 's3_secret_key')
                 with status_lock:
                     archiver_status["message"] = f"Using S3 credentials from config file"
-                flask_logger.info(f"Using S3 credentials from config file: {config_file}")
+                flask_logger.info(f"Successfully loaded S3 credentials from config file")
             except (configparser.NoSectionError, configparser.NoOptionError) as e:
                 error_msg = f"Error reading config file: {str(e)}"
                 with status_lock:
@@ -318,11 +323,22 @@ def start_archiving():
         s3_secret_key = request.form.get('s3_secret_key', '') or None
         config_file = request.form.get('config_file', '') or None
         
-        if config_file and not os.path.exists(config_file):
-            return jsonify({
-                "status": "error", 
-                "message": f"Config file not found: {config_file}"
-            })
+        # Prevent path traversal
+        if config_file:
+            # Convert to absolute path and check it doesn't escape the app directory
+            config_path = os.path.abspath(config_file)
+            app_dir = os.path.abspath(os.path.dirname(__file__))
+            if not config_path.startswith(app_dir):
+                return jsonify({
+                    "status": "error", 
+                    "message": "Invalid config file path: must be within application directory"
+                })
+            
+            if not os.path.exists(config_path):
+                return jsonify({
+                    "status": "error", 
+                    "message": f"Config file not found: {config_file}"
+                })
         
         # Start the archiver in a separate thread
         thread = threading.Thread(
@@ -358,9 +374,13 @@ def start_archiving():
             "message": "Archiver started successfully."
         })
     except Exception as e:
-        error_msg = f"Error starting archiver: {str(e)}"
-        flask_logger.error(error_msg, exc_info=True)
-        return jsonify({"status": "error", "message": error_msg})
+        # Log the full error for debugging but don't expose details to users
+        flask_logger.error(f"Error starting archiver: {str(e)}", exc_info=True)
+        # Return a sanitized error message
+        return jsonify({
+            "status": "error", 
+            "message": "An error occurred while starting the archiver. Please check the logs for details."
+        })
 
 @app.route('/status', methods=['GET'])
 def get_status():
@@ -642,10 +662,16 @@ if __name__ == '__main__':
                         }
                         
                         if (data.current_url) {
-                            statusText += `<br>Current URL: ${data.current_url}`;
+                            // Create text nodes to prevent XSS
+                            const urlElement = document.createElement('div');
+                            urlElement.textContent = `Current URL: ${data.current_url}`;
+                            
+                            // Clear any previous content and append safely
+                            statusDiv.textContent = statusText;
+                            statusDiv.appendChild(urlElement);
+                        } else {
+                            statusDiv.textContent = statusText;
                         }
-                        
-                        statusDiv.innerHTML = statusText;
                         
                         // Disable form while running
                         Array.from(form.elements).forEach(elem => {
@@ -696,7 +722,15 @@ if __name__ == '__main__':
         flask_logger.info("Running in production mode")
     
     try:
-        app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=debug_mode)
+        # Only bind to localhost by default for security, unless explicitly requested via env var
+        host = os.environ.get('HOST', '127.0.0.1')
+        port = int(os.environ.get('PORT', 5000))
+        
+        # Warn if binding to all interfaces
+        if host == '0.0.0.0':
+            flask_logger.warning("Server is binding to all network interfaces (0.0.0.0). This could pose a security risk if not behind a firewall.")
+            
+        app.run(host=host, port=port, debug=debug_mode)
     except Exception as e:
         flask_logger.error(f"Error starting web server: {str(e)}", exc_info=True)
         print(f"Error starting web server: {str(e)}")

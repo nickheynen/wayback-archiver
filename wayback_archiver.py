@@ -229,20 +229,86 @@ class WaybackArchiver:
         links = []
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        for link in soup.find_all('a', href=True):
-            href = link['href']
-            full_url = urljoin(base_url, href)
-            
-            # Exclude anchor links (keep the base URL part)
-            if '#' in full_url:
-                fragment_index = full_url.find('#')
-                full_url = full_url[:fragment_index]
-                if not full_url:
+        # Use a timeout to prevent ReDoS attacks with complex HTML
+        max_parse_time = 5  # 5 seconds timeout
+        start_time = time.time()
+        
+        # Validate base URL
+        if not self._is_valid_url(base_url):
+            logger.warning(f"Invalid base URL: {base_url}")
+            return links
+        
+        try:
+            for link in soup.find_all('a', href=True):
+                # Check timeout
+                if time.time() - start_time > max_parse_time:
+                    logger.warning(f"Link extraction timeout for {base_url}")
+                    break
+                    
+                href = link['href']
+                # Skip javascript: and data: URLs
+                if href.startswith(('javascript:', 'data:', 'vbscript:')):
                     continue
                     
-            links.append(full_url)
+                full_url = urljoin(base_url, href)
+                
+                # Validate the URL
+                if not self._is_valid_url(full_url):
+                    continue
+                
+                # Exclude anchor links (keep the base URL part)
+                if '#' in full_url:
+                    fragment_index = full_url.find('#')
+                    full_url = full_url[:fragment_index]
+                    if not full_url:
+                        continue
+                        
+                links.append(full_url)
+        except Exception as e:
+            logger.error(f"Error extracting links from {base_url}: {str(e)}")
             
         return links
+        
+    def _is_valid_url(self, url: str) -> bool:
+        """
+        Validate URL format and safety.
+        
+        Args:
+            url (str): URL to validate
+            
+        Returns:
+            bool: True if URL is valid and safe, False otherwise
+        """
+        try:
+            # Basic format validation
+            if not url or not isinstance(url, str):
+                return False
+                
+            # Check for common safe protocols
+            parsed = urlparse(url)
+            if parsed.scheme not in ('http', 'https'):
+                return False
+                
+            # Must have a hostname
+            if not parsed.netloc:
+                return False
+                
+            # Prevent localhost and private network access
+            hostname = parsed.netloc.split(':')[0].lower()
+            if (hostname == 'localhost' or 
+                hostname.startswith('127.') or 
+                hostname.startswith('192.168.') or
+                hostname.startswith('10.') or
+                (hostname.startswith('172.') and 16 <= int(hostname.split('.')[1]) <= 31)):
+                return False
+                
+            # Add a maximum URL length to prevent attacks
+            if len(url) > 2048:
+                return False
+                
+            return True
+        except Exception:
+            return False
         
     def _is_image_url(self, url: str) -> bool:
         """
@@ -406,29 +472,53 @@ class WaybackArchiver:
             failed_urls (list): List of URLs that failed to archive.
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        domain_name = self.base_domain.replace(".", "_")
+        # Sanitize domain name to prevent directory traversal or special chars
+        domain_name = re.sub(r'[^a-zA-Z0-9_]', '_', self.base_domain)
         output_dir = pathlib.Path("wayback_results")
         
-        # Create output directory if it doesn't exist
+        # Create output directory if it doesn't exist with secure permissions
         try:
             output_dir.mkdir(exist_ok=True)
+            # Set secure file permissions (0o750 = rwxr-x---)
+            os.chmod(output_dir, 0o750)
         except Exception as e:
             logger.error(f"Failed to create output directory: {str(e)}")
             print(f"Failed to create output directory: {str(e)}")
             # Fall back to current directory
             output_dir = pathlib.Path(".")
             
+        # Generate unique filenames with random component to prevent enumeration
+        random_suffix = secrets.token_hex(4)
+        
         # Save successful URLs
         if self.successful_urls:
-            success_file = output_dir / f"successful_urls_{domain_name}_{timestamp}.json"
+            success_file = output_dir / f"successful_urls_{domain_name}_{timestamp}_{random_suffix}.json"
             try:
-                with open(success_file, 'w') as f:
-                    json.dump(list(self.successful_urls), f, indent=2)
+                # Use a secure temp file first, then rename atomically
+                temp_file = output_dir / f".tmp_{secrets.token_hex(8)}.json"
+                with open(temp_file, 'w') as f:
+                    json.dump({
+                        "domain": self.base_domain,
+                        "timestamp": timestamp,
+                        "total_urls": len(self.urls_to_archive),
+                        "successful_urls": list(self.successful_urls)
+                    }, f, indent=2)
+                
+                # Set secure file permissions before renaming
+                os.chmod(temp_file, 0o640)  # 0o640 = rw-r-----
+                os.rename(temp_file, success_file)
+                
                 logger.info(f"Successfully archived URLs saved to {success_file}")
                 print(f"Successfully archived URLs saved to {success_file}")
             except Exception as e:
                 logger.error(f"Error saving successful URLs to file: {str(e)}")
                 print(f"Error saving successful URLs to file: {str(e)}")
+                # Clean up temp file if it exists
+                if 'temp_file' in locals() and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
                 
         # Save failed URLs if any
         if failed_urls:
@@ -436,20 +526,34 @@ class WaybackArchiver:
             print(f"\n{len(failed_urls)} URLs failed to archive after retries.")
             
             # Save failed URLs to a JSON file for future retry
-            failed_file = output_dir / f"failed_urls_{domain_name}_{timestamp}.json"
+            failed_file = output_dir / f"failed_urls_{domain_name}_{timestamp}_{random_suffix}.json"
             
             try:
-                with open(failed_file, 'w') as f:
+                # Use a secure temp file first, then rename atomically
+                temp_file = output_dir / f".tmp_{secrets.token_hex(8)}.json"
+                with open(temp_file, 'w') as f:
                     json.dump({
                         "domain": self.base_domain,
                         "timestamp": timestamp,
+                        "total_urls": len(self.urls_to_archive),
                         "failed_urls": failed_urls
                     }, f, indent=2)
+                
+                # Set secure file permissions before renaming
+                os.chmod(temp_file, 0o640)  # 0o640 = rw-r-----
+                os.rename(temp_file, failed_file)
+                
                 logger.info(f"Failed URLs saved to {failed_file} for future retry.")
                 print(f"Failed URLs have been saved to {failed_file} for future retry.")
             except Exception as e:
                 logger.error(f"Error saving failed URLs to file: {str(e)}")
                 print(f"Error saving failed URLs to file: {str(e)}")
+                # Clean up temp file if it exists
+                if 'temp_file' in locals() and os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
     
     def _calculate_wait_time(self, retry_delay: float, backoff_factor: float, retries: int) -> float:
         """
@@ -627,20 +731,51 @@ def _load_retry_urls(retry_file: str) -> list:
         list: List of URLs to retry, or empty list if none found
     """
     try:
-        if not os.path.exists(retry_file):
+        # Security: Normalize path and validate it's in the expected directory
+        retry_file_path = os.path.abspath(os.path.normpath(retry_file))
+        app_dir = os.path.abspath(os.path.dirname(__file__))
+        expected_dir = os.path.join(app_dir, "wayback_results")
+        
+        # Ensure file is within the expected directory or current directory
+        if not (retry_file_path.startswith(app_dir) or 
+                retry_file_path.startswith(expected_dir) or
+                os.path.dirname(retry_file_path) == os.getcwd()):
+            logger.error(f"Security error: Retry file path outside of allowed directories: {retry_file}")
+            print(f"Error: Retry file must be in the application directory or wayback_results directory")
+            return []
+        
+        if not os.path.exists(retry_file_path):
             logger.error(f"Retry file not found: {retry_file}")
             print(f"Error: Retry file not found: {retry_file}")
             return []
             
-        with open(retry_file, 'r') as f:
-            retry_data = json.load(f)
+        # Limit file size to prevent memory issues
+        file_size = os.path.getsize(retry_file_path)
+        if file_size > 10 * 1024 * 1024:  # 10MB limit
+            logger.error(f"Retry file too large (>{file_size/1024/1024:.2f}MB): {retry_file}")
+            print(f"Error: Retry file too large (max 10MB)")
+            return []
+            
+        with open(retry_file_path, 'r') as f:
+            # Use strict=False to prevent JSON vulnerability exploits
+            retry_data = json.loads(f.read(), strict=False)
             urls_to_retry = retry_data.get('failed_urls', [])
             
-        if not urls_to_retry:
-            logger.warning(f"No URLs found to retry in {retry_file}")
-            print(f"No URLs found to retry in {retry_file}")
+            # Validate URLs
+            valid_urls = []
+            for url in urls_to_retry:
+                # Basic URL validation
+                parsed = urlparse(url)
+                if parsed.scheme in ('http', 'https') and parsed.netloc:
+                    valid_urls.append(url)
+                else:
+                    logger.warning(f"Skipping invalid URL in retry file: {url}")
             
-        return urls_to_retry
+        if not valid_urls:
+            logger.warning(f"No valid URLs found to retry in {retry_file}")
+            print(f"No valid URLs found to retry in {retry_file}")
+            
+        return valid_urls
     except json.JSONDecodeError:
         logger.error(f"Invalid JSON format in retry file: {retry_file}")
         print(f"Error: Invalid JSON format in retry file: {retry_file}")
