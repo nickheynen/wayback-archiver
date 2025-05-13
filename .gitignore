@@ -1,10 +1,16 @@
+# Logs
+*.log
+wayback_archiver.log
+
+# Results directory
+wayback_results/
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -16,18 +22,15 @@ lib64/
 parts/
 sdist/
 var/
+wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
-# Wayback Archiver specific
-wayback_archiver.log
-successful_urls_*.json
-failed_urls_*.json
-
 # Virtual Environment
 venv/
 ENV/
+env/
 
 # IDE
 .idea/

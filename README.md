@@ -1,260 +1,161 @@
 # Wayback Archiver
 
-A Python tool to automatically crawl and archive entire subdomains in the Internet Archive's Wayback Machine.
+A simple tool to save copies of websites to the Internet Archive's Wayback Machine.
 
-## Overview
+## What Does It Do?
 
-Wayback Archiver helps preserve web content by crawling all pages within a specified subdomain and submitting them to the Internet Archive's Wayback Machine. This is particularly useful for:
+This tool helps you save entire websites to the Wayback Machine. It:
 
-- Preserving content from websites that might be shut down
-- Creating complete historical snapshots of blogs or documentation sites
-- Ensuring important information remains available even if the original site changes
-- Archiving personal projects, portfolios, or academic websites
+1. Starts at any webpage you specify
+2. Finds all the links on that page
+3. Follows those links to find more pages on the same site
+4. Saves each page to the Wayback Machine
 
-## Features
+This is useful when you want to:
 
-- **User-friendly Web Interface**: Easy-to-use UI for configuring and monitoring archiving jobs
-- **Recursive Crawling**: Automatically discovers and follows links within the target subdomain
-- **Smart Filtering**: Excludes common paths that would result in duplicate content (like tag pages, categories, etc.)
-- **Media Handling**: Excludes image files from archiving by default (configurable)
-- **Configurable Parameters**:
-  - Control crawl depth with max pages limit
-  - Limit recursive crawl depth to prevent excessive crawling
-  - Set delays between requests for API politeness
-  - Custom exclude patterns for site-specific requirements
-  - HTTPS-only mode (enabled by default)
-  - Image exclusion option (enabled by default)
-- **Batch Processing**: Handles large sites by processing URLs in batches with configurable pauses
-- **Resilient Operation**:
-  - Persistent connections with DNS caching to reduce connection issues
-  - Retry mechanism with exponential backoff for failed archive attempts
-  - Graceful error handling and interruption recovery
-  - Ability to resume archiving from previously failed URLs
-  - Robots.txt respect for ethical crawling
-- **Detailed Logging**: Comprehensive logs and output files to track progress and results
-- **Security Features**:
-  - CSRF protection in the web interface
-  - Secure credential handling options
-  - Input validation and sanitization
+* Save a website that might be taken down soon
+* Create a backup of your blog or personal site
+* Preserve important documentation or articles
+* Archive a project before it changes
 
-## Screenshot
+## Quick Start
 
-![Wayback Archiver Web Interface](https://github.com/nickheynen/wayback-archiver/raw/main/screenshots/web_interface.png)
+1. Make sure you have Python 3.8 or newer installed on your computer
+2. Download this tool:
 
-## Requirements
-
-- Python 3.8+
-- Main dependencies (installed automatically via requirements.txt):
-  - `requests`: For HTTP operations
-  - `beautifulsoup4`: For HTML parsing
-  - `flask`: For the web interface
-  - `urllib3` & `dnspython`: For improved networking and DNS resolution
-  - `gunicorn`: For production deployment
-
-## Installation
-
-1. Clone or download this repository:
    ```bash
    git clone https://github.com/nickheynen/wayback-archiver.git
    cd wayback-archiver
    ```
+3. Install the required software:
 
-2. Install the required packages:
    ```bash
    pip install -r requirements.txt
    ```
+4. Run it (replace the URL with the website you want to save):
 
-## Running the Web Interface
-
-1. Start the application by running the `web_interface.py` script:
    ```bash
-   python3 web_interface.py
+   python wayback_archiver.py https://example.com
    ```
 
-2. Open your browser and navigate to `http://127.0.0.1:5000`.
+## Basic Usage Examples
 
-3. Fill out the form with your target subdomain and configuration options:
-   - Basic settings: URL, email, delay, page limits, exclude patterns
-   - Options: Control for robots.txt, HTTPS-only mode, image exclusion
-   - Authentication: Enter S3 credentials directly or specify a config file path
-
-4. Click "Start Archiving" and monitor the progress in real-time.
-
-## Command Line Usage
-
-You can run the archiver directly from the command line:
+Save a website, waiting 15 seconds between each page (recommended):
 
 ```bash
-python3 wayback_archiver.py https://example.com --email your-email@example.com --delay 15 --max-pages 500 --max-depth 10
+python wayback_archiver.py https://example.com --delay 15
 ```
 
-Common command line options:
+Save only the first 100 pages found:
 
-```
---delay DELAY           Delay between archive requests in seconds (default: 15)
---max-pages MAX_PAGES   Maximum number of pages to crawl (default: unlimited)
---max-depth MAX_DEPTH   Maximum crawl depth from starting URL (default: 10)
---max-retries MAX_RETRIES
-                       Maximum retry attempts for failed archives (default: 3)
---backoff-factor BACKOFF_FACTOR
-                       Exponential backoff factor for retries (default: 1.5)
---batch-size BATCH_SIZE
-                       Process URLs in batches of this size (default: 150)
---batch-pause BATCH_PAUSE
-                       Seconds to pause between batches (default: 180)
---verbose, -v           Enable verbose logging
-```
-
-### Authentication Options
-
-#### Email Authentication (Recommended for Basic Use)
 ```bash
-python3 wayback_archiver.py https://example.com --email your-email@example.com
+python wayback_archiver.py https://example.com --max-pages 100
 ```
 
-#### S3 Authentication (For Internet Archive Contributors)
+Save pages but skip image files (recommended):
 
-There are three ways to provide S3 credentials, in order of security preference:
-
-1. **Environment Variables** (Recommended for advanced users):
 ```bash
-# Mac/Linux: Set the variables
-export IA_S3_ACCESS_KEY="your_access_key"
-export IA_S3_SECRET_KEY="your_secret_key"
-
-# Windows: Set the variables
-set IA_S3_ACCESS_KEY=your_access_key
-set IA_S3_SECRET_KEY=your_secret_key
-
-# Run the tool with --use-env-keys flag
-python3 wayback_archiver.py https://example.com --use-env-keys
+python wayback_archiver.py https://example.com --exclude-images
 ```
 
-2. **Configuration File** (Recommended for beginners):
+## Default Settings
 
-**Step-by-step guide:**
+When you run the tool without any extra options, these are the default settings:
 
-a) Create a config file with your favorite text editor:
+| Setting | Default Value | Description | Change with |
+|----|----|----|----|
+| Delay between requests | 15 seconds | Time to wait between saving pages | `--delay 20` |
+| Maximum depth | 10 levels | How many clicks deep to follow links | `--max-depth 5` |
+| Batch size | 150 pages | Pages to process before taking a longer break | `--batch-size 100` |
+| Batch pause | 180 seconds | Length of break between batches | `--batch-pause 300` |
+| Maximum retries | 3 times | Times to retry if a page fails | `--max-retries 5` |
+| Retry backoff | 1.5x | Multiplier for delay between retries | `--backoff-factor 2` |
+| HTTPS only | Yes | Only save HTTPS pages (safer) | `--include-http` |
+| Exclude images | Yes | Skip saving image files | `--include-images` |
+| Respect robots.txt | Yes | Follow website crawling rules | `--ignore-robots-txt` |
+| URL patterns excluded | Common patterns\* | Skip certain types of URLs | `--exclude` |
 
-Mac/Linux:
+\*Default excluded patterns:
+
+* `/tag/`, `/category/` - Tag and category pages
+* `/author/`, `/page/` - Author and pagination pages
+* `/comment-page-`, `/wp-json/` - WordPress system pages
+* `/feed/`, `/wp-content/cache/` - Feed and cache files
+* `/wp-admin/`, `/search/` - Admin and search pages
+* `/login/`, `/register/` - User account pages
+* `/signup/`, `/logout/` - User account pages
+* `/privacy-policy/` - Standard policy pages
+* `/404/`, `/error/` - Error pages
+
+## Advanced Features
+
+### Adding Your Email
+It's good practice to include your email when using the Wayback Machine:
 ```bash
-# Create the file
-touch ~/.ia_credentials.ini
-
-# Set secure permissions (only you can read it)
-chmod 600 ~/.ia_credentials.ini
-
-# Edit with your preferred editor
-nano ~/.ia_credentials.ini
+python wayback_archiver.py https://example.com --email your-email@example.com
 ```
 
-Windows: Create a file named `.ia_credentials.ini` in your user folder (e.g., `C:\Users\yourusername\.ia_credentials.ini`)
-
-b) Add the following content to the file, replacing with your actual keys:
-```ini
-[default]
-s3_access_key = your_access_key
-s3_secret_key = your_secret_key
-```
-
-c) Run the archiver with your config file:
+### Controlling How Deep It Goes
+The tool will follow links to find pages. You can control how many "clicks" deep it goes:
 ```bash
-# Mac/Linux
-python3 wayback_archiver.py https://example.com --config-file ~/.ia_credentials.ini
-
-# Windows
-python3 wayback_archiver.py https://example.com --config-file C:\Users\yourusername\.ia_credentials.ini
+python wayback_archiver.py https://example.com --max-depth 5
 ```
 
-3. **Command Line** (Not recommended for security reasons):
+### Processing in Batches
+For large sites, the tool can take breaks between groups of pages:
 ```bash
-python3 wayback_archiver.py https://example.com --s3-access-key YOUR_ACCESS_KEY --s3-secret-key YOUR_SECRET_KEY
+python wayback_archiver.py https://example.com --batch-size 50 --batch-pause 180
 ```
+This will process 50 pages, then pause for 3 minutes before continuing.
 
-**Note**: Your credentials will remain secure in the config file for future use, so you only need to set them up once.
-
-### HTTPS and Protocol Options
-
-By default, the tool only archives HTTPS URLs. To include HTTP URLs:
+### Retrying Failed Pages
+If some pages fail to save, the tool creates a file in the `wayback_results` folder. You can retry these pages:
 ```bash
-python3 wayback_archiver.py https://example.com --include-http
+python wayback_archiver.py --retry-file wayback_results/failed_urls_example.com_20240220_123456.json
 ```
 
-### Robots.txt Control
+## Where to Find the Results
 
-By default, the tool respects robots.txt. To override:
-```bash
-python3 wayback_archiver.py https://example.com --ignore-robots-txt
-```
+The tool creates several files in a folder called `wayback_results`:
+- `successful_urls_[domain]_[timestamp].json` - List of successfully saved pages
+- `failed_urls_[domain]_[timestamp].json` - List of pages that failed to save
+- `wayback_archiver.log` - Detailed log of what happened during the process
 
-### Image Files Control
+## Common Problems and Solutions
 
-By default, image files (jpg, png, gif, etc.) are excluded from archiving. To include them:
-```bash
-python3 wayback_archiver.py https://example.com --include-images
-```
+1. **"Too Many Requests" Error**
+   - Increase the delay between requests: `--delay 30`
+   - Use smaller batch sizes: `--batch-size 50`
+   - Add longer pauses between batches: `--batch-pause 300`
 
-For all available options:
-```bash
-python3 wayback_archiver.py --help
-```
+2. **"Connection Error" Messages**
+   - The site might be blocking rapid requests; try increasing delays
+   - Check if the site is accessible in your browser
+   - Check your internet connection
 
-## Online Deployment
+3. **Takes Too Long**
+   - Limit the number of pages: `--max-pages 500`
+   - Reduce how deep it goes: `--max-depth 5`
+   - Skip image files (this is actually the default)
+   - Focus on specific sections by starting from a subpage
 
-The web interface can be deployed online using various hosting services. Here's how to deploy on:
+## Important Notes
 
-### Using PythonAnywhere
+- Be considerate: Use reasonable delays between requests (15 seconds or more)
+- Some websites don't want to be archived - respect their robots.txt rules
+- The tool skips certain paths by default (like login pages and search results)
+- For best results, start with a small section of a site before trying to archive everything
+- The tool works best with static websites and blogs
+- Large, dynamic sites with lots of JavaScript might not archive properly
 
-1. Create a free account on [PythonAnywhere](https://www.pythonanywhere.com/)
-2. Upload the project files or clone the repository
-3. Set up a web app with Flask
-4. Configure your WSGI file to point to the `web_interface.py` application
+## Need Help?
 
-### Using Heroku
-
-1. Add a `Procfile` with the content:
-   ```
-   web: gunicorn web_interface:app
-   ```
-2. Add `gunicorn` to your requirements.txt
-3. Deploy to Heroku
-
-## Output Files
-
-By default, output files are saved to the `wayback_results` directory:
-
-- **Log Files**: 
-  - `wayback_archiver.log`: Contains detailed logs of the archiving process
-  - `wayback_web.log`: Contains logs from the web interface (when using web UI)
-- **Results**: 
-  - `wayback_results/successful_urls_<domain>_<timestamp>.json`: Contains all successfully archived URLs
-  - `wayback_results/failed_urls_<domain>_<timestamp>.json`: Contains URLs that failed to archive
-
-You can use the `/results` endpoint in the web interface to view archived results.
-
-## API Usage Notice
-
-This tool uses the Internet Archive's Wayback Machine API. Please use it responsibly:
-
-- Set reasonable delays between requests (the default is 15 seconds)
-- Provide your email or S3 authentication when archiving
-- Use S3 authentication if you're a frequent contributor (contact Internet Archive for credentials)
-- Keep HTTPS-only mode enabled when possible for better web security
-- Respect robots.txt directives (enabled by default)
-- Respect the terms of service of both the Internet Archive and target websites
-- Consider donating to the Internet Archive if you find this tool valuable
+- Use `python wayback_archiver.py --help` to see all options
+- Create an issue on GitHub if you find a bug or need help
+- Check the log file (wayback_archiver.log) for detailed information about any problems
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project is free to use under the MIT License.
 
-## Contributing
 
-Contributions are welcome! To contribute:
-
-1. Fork the repository
-2. Create a new branch for your feature
-3. Add your changes
-4. Submit a pull request
-
-For bugs, questions, or feature requests, please open an issue on GitHub.

@@ -14,6 +14,12 @@ from collections import deque
 import re
 import pathlib
 import secrets
+from ratelimit import limits, sleep_and_retry
+import validators
+import urllib.parse
+from cachetools import TTLCache
+import dns.resolver
+import functools
 
 # Setup logging configuration once at module level
 logger = logging.getLogger("wayback_archiver")
@@ -35,7 +41,8 @@ class WaybackArchiver:
                 backoff_factor: float=1.5, batch_size: int=150, batch_pause: int=180,
                 respect_robots_txt: bool=True, https_only: bool=True, 
                 s3_access_key: Optional[str]=None, s3_secret_key: Optional[str]=None,
-                exclude_images: bool=True, max_depth: int=10):
+                exclude_images: bool=True, max_depth: int=10, 
+                connect_timeout: int=10, read_timeout: int=30, max_session_errors: int=50):
         """
         Initialize the WaybackArchiver instance with the target subdomain and configuration options.
 
@@ -54,6 +61,9 @@ class WaybackArchiver:
             s3_secret_key (str, optional): Internet Archive S3 secret key for authentication.
             exclude_images (bool, optional): Whether to exclude image files from archiving (default: True).
             max_depth (int, optional): Maximum crawl depth from the starting URL (default: 10).
+            connect_timeout (int, optional): Connection timeout in seconds (default: 10).
+            read_timeout (int, optional): Read timeout in seconds (default: 30).
+            max_session_errors (int, optional): Maximum number of session errors before recreating the session (default: 50).
         """
         # Validate the subdomain URL format
         if not re.match(r'^https?://', subdomain):
@@ -78,6 +88,10 @@ class WaybackArchiver:
         self.exclude_images = exclude_images
         self.robots_parsers: Dict[str, RobotFileParser] = {}  # Cache for robots.txt parsers
         self.max_depth = max_depth
+        self.connect_timeout = connect_timeout
+        self.read_timeout = read_timeout
+        self.error_count = 0
+        self.max_session_errors = max_session_errors
         
         # Create a session with connection pooling and retry mechanism
         self.session = requests.Session()
@@ -88,6 +102,10 @@ class WaybackArchiver:
         )
         self.session.mount('http://', adapter)
         self.session.mount('https://', adapter)
+        
+        # Add caching
+        self.robots_cache = TTLCache(maxsize=100, ttl=3600)  # 1 hour TTL
+        self.dns_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes TTL
         
         logger.info("WaybackArchiver initialized.")
         if self.respect_robots_txt:
@@ -281,13 +299,17 @@ class WaybackArchiver:
             bool: True if URL is valid and safe, False otherwise
         """
         try:
-            # Basic format validation
-            if not url or not isinstance(url, str):
+            if not validators.url(url):
                 return False
                 
-            # Check for common safe protocols
             parsed = urlparse(url)
-            if parsed.scheme not in ('http', 'https'):
+            
+            # Additional security checks
+            if any(c in url for c in ['<', '>', '"', '{', '}', '|', '\\', '^', '`']):
+                return False
+                
+            # Check for javascript: protocol variants
+            if re.match(r'^javascript:', parsed.scheme, re.IGNORECASE):
                 return False
                 
             # Must have a hostname
@@ -594,6 +616,8 @@ class WaybackArchiver:
         except KeyboardInterrupt:
             print("\nRetry wait interrupted by user. Continuing immediately...")
 
+    @sleep_and_retry
+    @limits(calls=1, period=15)  # Enforce rate limiting
     def _archive_url(self, url: str, max_retries: int=3, retry_delay: Optional[float]=None, 
                     backoff_factor: float=1.5) -> bool:
         """
@@ -608,6 +632,16 @@ class WaybackArchiver:
         Returns:
             bool: True if the URL was archived successfully, False otherwise.
         """
+        # Sanitize and validate URL
+        try:
+            sanitized_url = urllib.parse.quote(url, safe=':/?=&')
+            if not validators.url(sanitized_url):
+                logger.error(f"Invalid URL format: {url}")
+                return False
+        except Exception as e:
+            logger.error(f"URL sanitation error: {str(e)}")
+            return False
+
         if retry_delay is None:
             retry_delay = self.delay
             
@@ -639,37 +673,50 @@ class WaybackArchiver:
         while retries <= max_retries:
             try:
                 # Use the class session with persistent connection pool and DNS cache
-                response = self.session.post(api_url, params=params, headers=headers, timeout=60)
-                
+                response = self.session.post(api_url, params=params, headers=headers, timeout=(self.connect_timeout, self.read_timeout))
                 if response.status_code in [200, 201]:
                     logger.info(f"URL archived successfully: {url}")
                     return True
-                
-                # Handle specific error cases
-                error_msg = f"API returned status code {response.status_code}"
-                error_type = "Rate limit exceeded" if response.status_code == 429 else \
-                            f"Server error ({response.status_code})" if response.status_code >= 500 else \
-                            f"API error ({response.status_code})"
-                            
-                self._handle_retry(url, error_type, error_msg, retry_delay, 
-                                backoff_factor, retries, max_retries)
-                    
+                else:
+                    error_type = "Rate limit exceeded" if response.status_code == 429 else \
+                        f"Server error ({response.status_code})" if response.status_code >= 500 else \
+                        f"API error ({response.status_code})"
+                    error_msg = response.text
+                    self._handle_retry(url, error_type, error_msg, retry_delay, backoff_factor, retries, max_retries)
             except requests.exceptions.ConnectionError as e:
-                self._handle_retry(url, "Connection error", str(e), retry_delay, 
-                                backoff_factor, retries, max_retries)
+                self._handle_retry(url, "Connection error", str(e), retry_delay, backoff_factor, retries, max_retries)
             except requests.exceptions.Timeout as e:
-                self._handle_retry(url, "Request timeout", str(e), retry_delay, 
-                                backoff_factor, retries, max_retries)  
+                self._handle_retry(url, "Request timeout", str(e), retry_delay, backoff_factor, retries, max_retries)
             except requests.exceptions.RequestException as e:
-                self._handle_retry(url, "Request error", str(e), retry_delay, 
-                                backoff_factor, retries, max_retries)
+                self._handle_retry(url, "Request error", str(e), retry_delay, backoff_factor, retries, max_retries)
             except Exception as e:
-                self._handle_retry(url, "Unexpected error", str(e), retry_delay, 
-                                backoff_factor, retries, max_retries)
-                
+                self._handle_retry(url, "Unexpected error", str(e), retry_delay, backoff_factor, retries, max_retries)
             retries += 1
-            
+        
         return False  # Failed after all retries
+
+    def _check_session_health(self):
+        """Monitor session health and recreate if needed."""
+        if self.error_count > self.max_session_errors:
+            logger.warning("Session error threshold reached, recreating session")
+            self.session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(
+                max_retries=self.max_retries,
+                pool_connections=100,
+                pool_maxsize=100
+            )
+            self.session.mount('http://', adapter)
+            self.session.mount('https://', adapter)
+            self.error_count = 0
+
+    @functools.lru_cache(maxsize=100)
+    def _resolve_domain(self, domain: str) -> Optional[str]:
+        """Cache DNS resolutions."""
+        try:
+            return str(dns.resolver.resolve(domain, 'A')[0])
+        except Exception as e:
+            logger.error(f"DNS resolution error for {domain}: {str(e)}")
+            return None
 
 def _load_s3_credentials(args) -> tuple:
     """
@@ -685,12 +732,11 @@ def _load_s3_credentials(args) -> tuple:
     if args.s3_access_key and args.s3_secret_key:
         logger.warning("Using S3 credentials from command line is less secure. Consider using environment variables or a config file.")
         return args.s3_access_key, args.s3_secret_key
-    
+        
     # Option 2: Environment variables
     if args.use_env_keys:
         access_key = os.environ.get('IA_S3_ACCESS_KEY')
         secret_key = os.environ.get('IA_S3_SECRET_KEY')
-        
         if not access_key or not secret_key:
             logger.error("Environment variables IA_S3_ACCESS_KEY and/or IA_S3_SECRET_KEY not found.")
             print("Error: Environment variables IA_S3_ACCESS_KEY and/or IA_S3_SECRET_KEY not set.")
@@ -698,7 +744,7 @@ def _load_s3_credentials(args) -> tuple:
             
         logger.info("Using S3 credentials from environment variables.")
         return access_key, secret_key
-    
+        
     # Option 3: Configuration file
     if args.config_file:
         if not os.path.exists(args.config_file):
@@ -744,7 +790,7 @@ def _load_retry_urls(retry_file: str) -> list:
             logger.error(f"Security error: Retry file path outside of allowed directories: {retry_file}")
             print(f"Error: Retry file must be in the application directory or wayback_results directory")
             return []
-        
+            
         if not os.path.exists(retry_file_path):
             logger.error(f"Retry file not found: {retry_file}")
             print(f"Error: Retry file not found: {retry_file}")
@@ -771,12 +817,13 @@ def _load_retry_urls(retry_file: str) -> list:
                     valid_urls.append(url)
                 else:
                     logger.warning(f"Skipping invalid URL in retry file: {url}")
-            
+                    
         if not valid_urls:
             logger.warning(f"No valid URLs found to retry in {retry_file}")
             print(f"No valid URLs found to retry in {retry_file}")
             
         return valid_urls
+        
     except json.JSONDecodeError:
         logger.error(f"Invalid JSON format in retry file: {retry_file}")
         print(f"Error: Invalid JSON format in retry file: {retry_file}")
@@ -793,13 +840,17 @@ def main():
     This function supports both normal crawling and retrying previously failed URLs.
     """
     parser = argparse.ArgumentParser(description='Archive an entire subdomain using the Wayback Machine')
-    parser.add_argument('subdomain', help='The subdomain to archive (e.g., https://blog.example.com)')
+    # Add the -f argument
+    parser.add_argument('-f', '--file', help='Text file containing URLs to archive (one per line)')
+    # Make subdomain optional if using -f
+    parser.add_argument('subdomain', nargs='?', help='The subdomain to archive (e.g., https://blog.example.com)')
+    # ...existing arguments...
     parser.add_argument('--email', help='Your email address (recommended for API use and necessary for high volume archiving)')
     parser.add_argument('--delay', type=int, default=15, help='Delay between archive requests in seconds (default: 15, minimum recommended is 10)')
     parser.add_argument('--max-pages', type=int, help='Maximum number of pages to crawl (default: unlimited)')
-    parser.add_argument('--max-depth', type=int, default=10, help='Maximum crawl depth from starting URL (default: 10)')
     parser.add_argument('--max-retries', type=int, default=3, help='Maximum retry attempts for failed archives (default: 3)')
     parser.add_argument('--backoff-factor', type=float, default=1.5, help='Exponential backoff factor for retries (default: 1.5)')
+    parser.add_argument('--max-depth', type=int, default=10, help='Maximum crawl depth from starting URL (default: 10)')
     parser.add_argument('--batch-size', type=int, default=150, help='Process URLs in batches of this size and pause between batches (default: 150)')
     parser.add_argument('--batch-pause', type=int, default=180, help='Seconds to pause between batches (default: 180)')
     parser.add_argument('--exclude', nargs='+', 
@@ -819,6 +870,23 @@ def main():
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
     
     args = parser.parse_args()
+    
+    # Handle file input
+    if args.file:
+        try:
+            with open(args.file, 'r') as f:
+                urls = [line.strip() for line in f if line.strip()]
+            # Use the first URL as the subdomain for configuration
+            args.subdomain = urls[0]
+            logger.info(f"Loaded {len(urls)} URLs from {args.file}")
+            print(f"Loaded {len(urls)} URLs from {args.file}")
+        except Exception as e:
+            logger.error(f"Error reading URL file: {str(e)}")
+            print(f"Error reading URL file: {str(e)}")
+            return 1
+    elif not args.subdomain:
+        print("Error: Either subdomain or -f/--file argument is required")
+        return 1
     
     # Set logging level based on verbose flag
     if args.verbose:
@@ -876,7 +944,7 @@ def main():
                 exit_code = 1
             else:
                 archiver.archive_urls()
-            
+                
         if exit_code == 0:
             logger.info("Archiving process completed successfully!")
             print("Archiving process completed successfully!")
