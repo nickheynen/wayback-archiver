@@ -2,6 +2,9 @@
 *.log
 wayback_archiver.log
 
+# URLs file
+URLs to archive.txt
+
 # Results directory
 wayback_results/
 
