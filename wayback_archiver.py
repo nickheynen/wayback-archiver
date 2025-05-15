@@ -876,10 +876,16 @@ def main():
         try:
             with open(args.file, 'r') as f:
                 urls = [line.strip() for line in f if line.strip()]
-            # Use the first URL as the subdomain for configuration
-            args.subdomain = urls[0]
             logger.info(f"Loaded {len(urls)} URLs from {args.file}")
             print(f"Loaded {len(urls)} URLs from {args.file}")
+            
+            if not urls:
+                logger.error("No valid URLs found in the file")
+                print("Error: No valid URLs found in the file")
+                return 1
+                
+            # We'll process multiple URLs from the file
+            process_multiple_urls = True
         except Exception as e:
             logger.error(f"Error reading URL file: {str(e)}")
             print(f"Error reading URL file: {str(e)}")
@@ -887,47 +893,53 @@ def main():
     elif not args.subdomain:
         print("Error: Either subdomain or -f/--file argument is required")
         return 1
+    else:
+        # Single URL mode
+        urls = [args.subdomain]
+        process_multiple_urls = False
     
     # Set logging level based on verbose flag
     if args.verbose:
         logger.setLevel(logging.DEBUG)
         logger.debug("Verbose logging enabled")
     
-    # Validate the subdomain format
-    if not args.subdomain.startswith(('http://', 'https://')):
-        print("Error: Subdomain must start with http:// or https://")
-        return 1
+    # Validate URL formats if we're not reading from a file
+    if not args.file:
+        if not args.subdomain.startswith(('http://', 'https://')):
+            print("Error: Subdomain must start with http:// or https://")
+            return 1
     
     # Handle S3 credentials
     s3_access_key, s3_secret_key = _load_s3_credentials(args)
     
-    # Create the archiver
-    try:
-        archiver = WaybackArchiver(
-            args.subdomain, 
-            email=args.email, 
-            delay=args.delay, 
-            exclude_patterns=args.exclude,
-            max_retries=args.max_retries,
-            backoff_factor=args.backoff_factor,
-            batch_size=args.batch_size,
-            batch_pause=args.batch_pause,
-            respect_robots_txt=not args.ignore_robots_txt,
-            https_only=not args.include_http,
-            s3_access_key=s3_access_key,
-            s3_secret_key=s3_secret_key,
-            exclude_images=not args.include_images,
-            max_depth=args.max_depth
-        )
-    except ValueError as e:
-        logger.error(f"Configuration error: {str(e)}")
-        print(f"Error: {str(e)}")
-        return 1
-    
     exit_code = 0
+    
     try:
         # Check if we're retrying previously failed URLs
         if args.retry_file:
+            # Create the archiver using the first URL for basic setup
+            try:
+                archiver = WaybackArchiver(
+                    urls[0], 
+                    email=args.email, 
+                    delay=args.delay, 
+                    exclude_patterns=args.exclude,
+                    max_retries=args.max_retries,
+                    backoff_factor=args.backoff_factor,
+                    batch_size=args.batch_size,
+                    batch_pause=args.batch_pause,
+                    respect_robots_txt=not args.ignore_robots_txt,
+                    https_only=not args.include_http,
+                    s3_access_key=s3_access_key,
+                    s3_secret_key=s3_secret_key,
+                    exclude_images=not args.include_images,
+                    max_depth=args.max_depth
+                )
+            except ValueError as e:
+                logger.error(f"Configuration error: {str(e)}")
+                print(f"Error: {str(e)}")
+                return 1
+                
             urls_to_retry = _load_retry_urls(args.retry_file)
             if urls_to_retry:
                 print(f"Retrying {len(urls_to_retry)} previously failed URLs from {args.retry_file}")
@@ -936,18 +948,54 @@ def main():
             else:
                 exit_code = 1  # No URLs found to retry
         else:
-            # Normal crawl and archive
-            archiver.crawl(args.max_pages)
-            if not archiver.urls_to_archive:
-                logger.warning("No URLs found to archive. Check your subdomain and exclusion patterns.")
-                print("Warning: No URLs found to archive. Check your subdomain and exclusion patterns.")
-                exit_code = 1
-            else:
-                archiver.archive_urls()
+            # Process each URL in the file (or just the single subdomain)
+            for i, url in enumerate(urls):
+                if process_multiple_urls:
+                    print(f"\n[{i+1}/{len(urls)}] Processing URL: {url}")
+                    logger.info(f"Processing URL {i+1}/{len(urls)}: {url}")
                 
-        if exit_code == 0:
-            logger.info("Archiving process completed successfully!")
-            print("Archiving process completed successfully!")
+                # Create a new archiver for each URL
+                try:
+                    archiver = WaybackArchiver(
+                        url, 
+                        email=args.email, 
+                        delay=args.delay, 
+                        exclude_patterns=args.exclude,
+                        max_retries=args.max_retries,
+                        backoff_factor=args.backoff_factor,
+                        batch_size=args.batch_size,
+                        batch_pause=args.batch_pause,
+                        respect_robots_txt=not args.ignore_robots_txt,
+                        https_only=not args.include_http,
+                        s3_access_key=s3_access_key,
+                        s3_secret_key=s3_secret_key,
+                        exclude_images=not args.include_images,
+                        max_depth=args.max_depth
+                    )
+                except ValueError as e:
+                    logger.error(f"Configuration error for URL {url}: {str(e)}")
+                    print(f"Error with URL {url}: {str(e)}")
+                    continue  # Skip to the next URL
+                
+                # Normal crawl and archive
+                archiver.crawl(args.max_pages)
+                if not archiver.urls_to_archive:
+                    logger.warning(f"No URLs found to archive for {url}. Check your URL and exclusion patterns.")
+                    print(f"Warning: No URLs found to archive for {url}. Check your URL and exclusion patterns.")
+                else:
+                    archiver.archive_urls()
+                    print(f"Completed archiving for {url}")
+                    logger.info(f"Completed archiving for {url}")
+                
+                # If there are more URLs to process, take a short break
+                if process_multiple_urls and i < len(urls) - 1:
+                    pause_time = 5  # 5 seconds pause between processing different domains
+                    print(f"Taking a {pause_time} second pause before the next URL...")
+                    time.sleep(pause_time)
+                
+        logger.info("All archiving processes completed!")
+        print("\nAll archiving processes completed!")
+                
     except KeyboardInterrupt:
         print("\nProcess interrupted by user. Exiting...")
         logger.warning("Process interrupted by user.")
