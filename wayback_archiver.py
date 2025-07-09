@@ -844,7 +844,6 @@ def main():
     parser.add_argument('-f', '--file', help='Text file containing URLs to archive (one per line)')
     # Make subdomain optional if using -f
     parser.add_argument('subdomain', nargs='?', help='The subdomain to archive (e.g., https://blog.example.com)')
-    # ...existing arguments...
     parser.add_argument('--email', help='Your email address (recommended for API use and necessary for high volume archiving)')
     parser.add_argument('--delay', type=int, default=15, help='Delay between archive requests in seconds (default: 15, minimum recommended is 10)')
     parser.add_argument('--max-pages', type=int, help='Maximum number of pages to crawl (default: unlimited)')

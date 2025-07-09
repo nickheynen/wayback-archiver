@@ -30,32 +30,50 @@ This is useful when you want to:
 3. Install the required software:
 
    ```bash
-   pip install -r requirements.txt
+   pip3 install -r requirements.txt
    ```
 4. Run it (replace the URL with the website you want to save):
 
    ```bash
-   python wayback_archiver.py https://example.com
+   python3 wayback_archiver.py https://example.com
    ```
+
+## Processing a List of URLs from a File
+
+You can archive multiple websites by providing a text file with one URL per line. For example, if you have a file called `URLs to archive.txt`:
+
+```
+https://example.com/
+https://another-site.org/
+https://mysite.net/
+```
+
+Run the tool with the `-f` or `--file` option:
+
+```bash
+python3 wayback_archiver.py -f "URLs to archive.txt"
+```
+
+All other options (like delays, depth, etc.) can be used as usual. The tool will process each URL in the file, one after another.
 
 ## Basic Usage Examples
 
 Save a website, waiting 15 seconds between each page (recommended):
 
 ```bash
-python wayback_archiver.py https://example.com --delay 15
+python3 wayback_archiver.py https://example.com --delay 15
 ```
 
 Save only the first 100 pages found:
 
 ```bash
-python wayback_archiver.py https://example.com --max-pages 100
+python3 wayback_archiver.py https://example.com --max-pages 100
 ```
 
 Save pages but skip image files (recommended):
 
 ```bash
-python wayback_archiver.py https://example.com --exclude-images
+python3 wayback_archiver.py https://example.com  # Images are skipped by default
 ```
 
 ## Default Settings
@@ -92,26 +110,26 @@ When you run the tool without any extra options, these are the default settings:
 ### Adding Your Email
 It's good practice to include your email when using the Wayback Machine:
 ```bash
-python wayback_archiver.py https://example.com --email your-email@example.com
+python3 wayback_archiver.py https://example.com --email your-email@example.com
 ```
 
 ### Controlling How Deep It Goes
 The tool will follow links to find pages. You can control how many "clicks" deep it goes:
 ```bash
-python wayback_archiver.py https://example.com --max-depth 5
+python3 wayback_archiver.py https://example.com --max-depth 5
 ```
 
 ### Processing in Batches
 For large sites, the tool can take breaks between groups of pages:
 ```bash
-python wayback_archiver.py https://example.com --batch-size 50 --batch-pause 180
+python3 wayback_archiver.py https://example.com --batch-size 50 --batch-pause 180
 ```
 This will process 50 pages, then pause for 3 minutes before continuing.
 
 ### Retrying Failed Pages
 If some pages fail to save, the tool creates a file in the `wayback_results` folder. You can retry these pages:
 ```bash
-python wayback_archiver.py --retry-file wayback_results/failed_urls_example.com_20240220_123456.json
+python3 wayback_archiver.py --retry-file wayback_results/failed_urls_example.com_20240220_123456.json
 ```
 
 ## Where to Find the Results
@@ -150,7 +168,7 @@ The tool creates several files in a folder called `wayback_results`:
 
 ## Need Help?
 
-- Use `python wayback_archiver.py --help` to see all options
+- Use `python3 wayback_archiver.py --help` to see all options
 - Create an issue on GitHub if you find a bug or need help
 - Check the log file (wayback_archiver.log) for detailed information about any problems
 
