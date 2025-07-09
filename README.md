@@ -38,6 +38,24 @@ This is useful when you want to:
    python3 wayback_archiver.py https://example.com
    ```
 
+## Processing a List of URLs from a File
+
+You can archive multiple websites by providing a text file with one URL per line. For example, if you have a file called `URLs to archive.txt`:
+
+```
+https://example.com/
+https://another-site.org/
+https://mysite.net/
+```
+
+Run the tool with the `-f` or `--file` option:
+
+```bash
+python3 wayback_archiver.py -f "URLs to archive.txt"
+```
+
+All other options (like delays, depth, etc.) can be used as usual. The tool will process each URL in the file, one after another.
+
 ## Basic Usage Examples
 
 Save a website, waiting 15 seconds between each page (recommended):
@@ -55,7 +73,7 @@ python3 wayback_archiver.py https://example.com --max-pages 100
 Save pages but skip image files (recommended):
 
 ```bash
-python3 wayback_archiver.py https://example.com --exclude-images
+python3 wayback_archiver.py https://example.com  # Images are skipped by default
 ```
 
 ## Default Settings
